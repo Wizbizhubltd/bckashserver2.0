@@ -1,0 +1,371 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>BCKash.Api</name>
+    </assembly>
+    <members>
+        <member name="T:BCKash.Api.Authorization.PermissionPolicyProvider">
+            <summary>
+            Registers one authorization policy per `permissions.slug` on the fly instead of
+            hardcoding every permission at startup (FRD §17): `[Authorize(Policy =
+            "Permission:loans.approve")]` resolves to a policy requiring that exact claim.
+            Anything not prefixed "Permission:" falls back to the default provider.
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.Authorization.PermissionRequirement">
+            <summary>One requirement per `permissions.slug` (FRD §17) — "does the caller's token carry this permission claim".</summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.ClientListItemResponse">
+            <summary>Slim projection for the paginated list screen (FR-CLI-5).</summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.ClientListItemResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.Nullable{System.Int32},BCKash.Domain.Clients.ClientStatus,System.Nullable{BCKash.Domain.Clients.ClientType},System.Nullable{System.DateOnly})">
+            <summary>Slim projection for the paginated list screen (FR-CLI-5).</summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.ReasonRequest">
+            <summary>Shared body shape for Deactivate/Decline/Close — all three require a reason.</summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.ReasonRequest.#ctor(System.String)">
+            <summary>Shared body shape for Deactivate/Decline/Close — all three require a reason.</summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.DocumentResponse">
+            <summary>No <c>Location</c> field — that's an internal storage key, never exposed to the SPA.</summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.DocumentResponse.#ctor(System.Int32,System.Nullable{BCKash.Domain.Clients.ReferenceEntityType},System.Nullable{System.Int32},System.String,System.String,System.String,System.Nullable{System.DateTime})">
+            <summary>No <c>Location</c> field — that's an internal storage key, never exposed to the SPA.</summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.GroupMemberResponse">
+            <summary><see cref="P:BCKash.Api.Contracts.GroupMemberResponse.ClientDisplayName"/>/<see cref="P:BCKash.Api.Contracts.GroupMemberResponse.ClientAccountNo"/> are joined in from the referenced Client for a useful roster row.</summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.GroupMemberResponse.#ctor(System.Int32,System.Nullable{System.Int32},System.String,System.String,System.Nullable{System.DateTime},System.Nullable{System.Int32},System.Nullable{System.DateTime},System.Nullable{System.Int32})">
+            <summary><see cref="P:BCKash.Api.Contracts.GroupMemberResponse.ClientDisplayName"/>/<see cref="P:BCKash.Api.Contracts.GroupMemberResponse.ClientAccountNo"/> are joined in from the referenced Client for a useful roster row.</summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.DisburseLoanRequest">
+            <summary>FR-LN-8's bare disbursement transition — see LoanService.DisburseAsync's doc comment for what this intentionally does not do (no schedule generation).</summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.DisburseLoanRequest.#ctor(System.Nullable{System.DateOnly},System.Decimal,System.String)">
+            <summary>FR-LN-8's bare disbursement transition — see LoanService.DisburseAsync's doc comment for what this intentionally does not do (no schedule generation).</summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.LoanChargeResponse">
+            <summary>
+            Amount is entered directly (no automatic percentage/installment-based calculation engine —
+            that needs the schedule the still-deferred FR-LN-15 spec would provide).
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.LoanChargeResponse.#ctor(System.Int32,System.Nullable{System.Int32},System.Nullable{System.Int32},System.Boolean,System.Boolean,BCKash.Domain.Loans.LoanChargeType,BCKash.Domain.Loans.LoanChargeCalculationType,System.Nullable{System.Decimal},System.Nullable{System.Decimal},System.Nullable{System.DateOnly},System.Int32)">
+            <summary>
+            Amount is entered directly (no automatic percentage/installment-based calculation engine —
+            that needs the schedule the still-deferred FR-LN-15 spec would provide).
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.Contracts.PagedResult`1">
+            <summary>
+            The house pagination envelope (NFR-3: "API responses for list endpoints are paginated by
+            default; no unbounded result sets"), introduced by Phase 2's client list endpoint. Its own
+            file (not ClientContracts.cs) since Phase 3 (Groups) is expected to reuse it for its own
+            paginated list without importing a client-specific file.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Contracts.PagedResult`1.#ctor(System.Collections.Generic.IReadOnlyList{`0},System.Int32,System.Int32,System.Int32)">
+            <summary>
+            The house pagination envelope (NFR-3: "API responses for list endpoints are paginated by
+            default; no unbounded result sets"), introduced by Phase 2's client list endpoint. Its own
+            file (not ClientContracts.cs) since Phase 3 (Groups) is expected to reuse it for its own
+            paginated list without importing a client-specific file.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.AssetsController.Depreciate(System.Int32,BCKash.Api.Contracts.RunDepreciationRequest,System.Threading.CancellationToken)">
+            <summary>FR-AST-2 — runs the next due annual depreciation year for one asset.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.AssetsController.RunDueDepreciation(BCKash.Api.Contracts.RunDepreciationRequest,System.Threading.CancellationToken)">
+            <summary>
+            Admin-triggered bulk run for every active asset not yet depreciated for the given year —
+            no scheduler exists in this codebase (FR-AST-2). Returns how many assets were depreciated.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.CampaignsController.PreviewRecipients(BCKash.Api.Contracts.SaveCampaignRequest,System.Threading.CancellationToken)">
+            <summary>FR-COM-1 — preview who a not-yet-saved (or already-saved) recipient category/filter combination would target, against real client/loan data.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.CampaignsController.Run(System.Int32,System.Threading.CancellationToken)">
+            <summary>FR-COM-2 — sends the campaign immediately.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.CampaignsController.RunDue(System.Threading.CancellationToken)">
+            <summary>FR-COM-2 — admin-triggered since no scheduler exists in this codebase.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ChargesController.Delete(System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Deactivates rather than deletes when the charge is already attached to a product
+            (FR-ORG-5: "cannot be deleted if in use on an active account — deactivate instead").
+            Phase 1 has no loan/savings-product-charge data yet to check against, so this always
+            deactivates; later phases should add the in-use check here once those tables are populated.
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.ClientIdentificationsController">
+            <summary>
+            Ownership-scoped CRUD under a client, no service class — matches the existing
+            "plain reads go straight through BCKashDbContext" precedent (OfficesController.List/Get),
+            extended to writes since there's no state machine or cross-entity invariant here to guard.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ClientsController.List(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.Nullable{BCKash.Domain.Clients.ClientStatus},System.Nullable{System.Int32},System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            FR-CLI-5's search/filter screen, paginated per NFR-3. <paramref name="search"/> matches
+            FirstName/MiddleName/LastName/DisplayName — not FullName, a legacy denormalized
+            concatenation that isn't kept authoritative by anything in this phase.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ClientsController.SafeDisplayName(BCKash.Domain.Clients.Client)">
+            <summary>
+            `display_name`/`full_name` are legacy denormalized columns that, on real imported data,
+            are routinely blank — never populated by whatever process wrote the original rows. Rather
+            than have every consumer of this API re-derive a fallback (and risk the same bug the
+            control portal hit, where a blank-but-non-empty stored value defeats a naive `||`
+            fallback), the response's DisplayName is always a real name: the stored value if it's
+            non-blank, otherwise FirstName + LastName computed here once.
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.DashboardController">
+            <summary>Aggregate record counts for the control portal's dashboard — read-only, so any authenticated staff member can view it (no permission policy beyond being logged in).</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.DocumentsController">
+            <summary>
+            Client document upload/download (FR-CLI-4), wired to the abstracted <see cref="T:BCKash.Application.Files.IFileStorageService"/>.
+            Scoped to clients in Phase 2, but Document itself is polymorphic (BCKash.Domain.Clients.Document)
+            and reusable by loans/groups/savings/etc. in later phases via the same Type+RecordId shape.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ExpensesController.RunRecurring(System.Threading.CancellationToken)">
+            <summary>FR-EXP-1 — admin-triggered since no scheduler exists in this codebase.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.GlReportsController">
+            <summary>FR-GL-7 — basic/unstyled at this stage per the phase spec; polish is Phase 8's reporting pass.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.GroupMembersController">
+            <summary>Group membership roster/history (BR-GRP-2). "Remove" soft-removes — see GroupClient's and IGroupMembershipService's doc comments.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.GroupMembersController.List(System.Int32,System.Boolean,System.Threading.CancellationToken)">
+            <summary>Defaults to the current roster (RemovedAt IS NULL); <paramref name="includeRemoved"/>=true returns the full membership history.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanApplicationCollateralController">
+            <summary>Collateral captured at the application stage (FR-LN-22, via the additive `Collateral.LoanApplicationId` column — see Collateral.cs).</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanApplicationGuarantorsController">
+            <summary>
+            Guarantors captured at the application stage (FR-LN-21). Ownership-scoped CRUD, no service —
+            same "no state machine to guard" reasoning as the Phase 2/3 sub-resource controllers.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoanApplicationsController.Approve(System.Int32,BCKash.Api.Contracts.ApproveLoanApplicationRequest,System.Threading.CancellationToken)">
+            <summary>FR-LN-5 — creates/links the resulting Loan record, traceable via `LoanApplication.LoanId`.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoanApplicationsController.Decline(System.Int32,BCKash.Api.Contracts.ReasonRequest,System.Threading.CancellationToken)">
+            <summary>FR-LN-6 — terminal; a declined application cannot be resurrected.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanChargesController">
+            <summary>
+            Loan-level charges (FR-LN-6/FR-ORG-5) — ownership-scoped CRUD, no service, same shape as
+            Phase 4's guarantor/collateral sub-resource controllers. <see cref="P:BCKash.Api.Contracts.SaveLoanChargeRequest.Amount"/>
+            is entered directly rather than computed from the charge's percentage/installment-basis
+            calculation option — automatic calculation needs the repayment schedule, which is blocked on
+            FR-LN-15 (see LoanChargeResponse's doc comment).
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoanProductsController.Delete(System.Int32,System.Threading.CancellationToken)">
+            <summary>FR-LN-1: a product with any Loan/LoanApplication against it cannot be deleted — deactivate instead.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanRepaymentsController">
+            <summary>FR-LN-16 (record/allocate) and FR-LN-18 (reversal).</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanRescheduleController">
+            <summary>FR-LN-23's reschedule request workflow.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanScheduleController">
+            <summary>Read-only view of a loan's repayment schedule (FR-LN-12 to FR-LN-14), generated at disbursement — see LoanService.DisburseAsync.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoansController">
+            <summary>
+            Loan read/list plus the lifecycle actions that live directly on the loan itself: FR-LN-7's
+            need-changes/pending cycle, FR-LN-8's disbursement (which now generates the schedule — see
+            LoanService.DisburseAsync), FR-LN-24's write-off/recovery, and FR-LN-25's NPA recompute.
+            Repayments/waivers/reschedule live in their own sub-resource controllers.
+            </summary>
+        </member>
+        <member name="F:BCKash.Api.Controllers.LoansController.ServicingPolicy">
+            <summary>Loan-servicing actions (disbursement, and later repayments/reschedule/write-off) get their own slug, distinct from origination's manage/approve split — matches the BRD's Loan Officer/Teller actor for disbursement.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.Late(System.Nullable{System.Int32},System.String,System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Disbursed loans carrying an installment, due within the last year, whose principal isn't
+            fully paid off yet — the drill-down behind the dashboard's "Late Loans" tile. See
+            DashboardController.Summary's doc comment for why this is keyed off paid amounts and
+            bounded to a year, not the `Paid`/`TotalDue` columns or all-time history.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.RequestChanges(System.Int32,BCKash.Api.Contracts.ReasonRequest,System.Threading.CancellationToken)">
+            <summary>The reviewer's action — sends a freshly-approved loan back to the loan officer.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.Resubmit(System.Int32,System.Threading.CancellationToken)">
+            <summary>The loan officer's action — after revising terms, sends the loan back to Pending.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.Disburse(System.Int32,BCKash.Api.Contracts.DisburseLoanRequest,System.Threading.CancellationToken)">
+            <summary>FR-LN-8's bare status transition — see LoanService.DisburseAsync's doc comment for the FR-LN-15 scope boundary (no schedule generated).</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.WriteOff(System.Int32,BCKash.Api.Contracts.WriteOffLoanRequest,System.Threading.CancellationToken)">
+            <summary>FR-LN-24: moves remaining outstanding amounts out of the active portfolio.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.RecordRecovery(System.Int32,BCKash.Api.Contracts.RecordRecoveryRequest,System.Threading.CancellationToken)">
+            <summary>FR-LN-24: a recovery payment against an already-written-off loan.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.LoansController.RecomputeNpa(System.Int32,System.Threading.CancellationToken)">
+            <summary>FR-LN-25: on-demand NPA recompute — no job scheduler exists to run this periodically (see ILoanNpaService's doc comment).</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanTransactionsController">
+            <summary>
+            Cross-loan transaction search — backs the dashboard's "Disbursements" and "Repayments" tiles,
+            which need to browse transactions network-wide rather than one loan at a time (that's
+            LoanRepaymentsController's job, scoped to a single loan).
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.LoanWaiversController">
+            <summary>FR-LN-20: waive interest or a specific charge component on one of the loan's schedule lines.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.OfficesController.Deactivate(System.Int32,System.Boolean,System.Threading.CancellationToken)">
+            <summary>
+            Deactivates an office. If it has active clients or open loans, returns 409 with
+            counts unless <paramref name="confirm"/>=true — the SPA re-submits with
+            confirm=true after the operator explicitly acknowledges the warning.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.PayrollController.Run(BCKash.Api.Contracts.RunPayrollRequest,System.Threading.CancellationToken)">
+            <summary>FR-PAY-2 — computes net pay from the template's line items and posts GL.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.PayrollController.RunRecurring(System.Threading.CancellationToken)">
+            <summary>FR-PAY-3 — admin-triggered since no scheduler exists in this codebase.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.RemindersController">
+            <summary>User-facing reminders (BR-COM-5, FR-COM-4) — always scoped to the current user; no permission gate beyond being authenticated.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ReportSchedulesController.Run(System.Int32,System.Threading.CancellationToken)">
+            <summary>FR-RPT-2 — runs one schedule immediately, regardless of its NextRunDate.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ReportSchedulesController.RunDue(System.Threading.CancellationToken)">
+            <summary>FR-RPT-2 — admin-triggered since no scheduler exists in this codebase.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.ReportsController">
+            <summary>
+            Single dispatch surface over the full FRD §14 catalog (29 reports) — see
+            IReportCatalogService's doc comment for why one endpoint handles all of them instead of 29
+            bespoke routes.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.ReportsController.Run(BCKash.Domain.Reporting.ScheduledReportName,System.Nullable{System.Int32},System.Nullable{System.DateOnly},System.Nullable{System.DateOnly},System.Nullable{System.Int32},System.Nullable{BCKash.Domain.Loans.LoanStatus},System.Nullable{System.Int32},System.Nullable{BCKash.Domain.Reporting.ReportSchedulerFileFormat},System.Threading.CancellationToken)">
+            <summary>FR-RPT-1's standard filter set. Add <c>?format=pdf|csv|xls</c> to download instead of receiving JSON.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.SavingsInterestController">
+            <summary>
+            FR-SAV-4's interest accrual/posting "job". No scheduler exists anywhere in this codebase
+            (same situation as Phase 5's NPA recompute) — this admin-triggered endpoint is the stand-in,
+            safe to call repeatedly since ISavingsInterestPostingService only acts on accounts whose
+            next calculation/posting date is actually due.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.SavingsProductsController.Delete(System.Int32,System.Threading.CancellationToken)">
+            <summary>FR-SAV-1: a product with any SavingsAccount against it cannot be deleted — deactivate instead.</summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.SavingsTransactionsController.Withdrawal(System.Int32,BCKash.Api.Contracts.RecordSavingsTransactionRequest,System.Threading.CancellationToken)">
+            <summary>FR-SAV-3: rejected (409) below the account's floor unless overdraft covers it.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.SavingsTransfersController">
+            <summary>FR-SAV-6's linked loan↔savings transfers.</summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.SettingsController">
+            <summary>
+            Thin CRUD over the `settings` table. Its real purpose in Phase 0 is to be the
+            "dummy audited entity" and "dummy permission-gated endpoint" the acceptance
+            criteria call for — proving the audit interceptor and permission policies work
+            end-to-end before any real module exists. Real settings-driven behavior is added
+            by later phases as they need it.
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.Controllers.UsersController">
+            <summary>
+            Staff onboarding and management (see docs/staff-onboarding-rbac-spec.md). Every mutating
+            action requires the `users.manage` permission at the HTTP layer; the maker-checker rule
+            (UserClass Initiator creates, a same-user_type Authorizer approves/declines, a super admin
+            bypasses both) is enforced inside IUserService, since it depends on per-record context a
+            declarative policy attribute can't express.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.Controllers.UsersController.Create(BCKash.Api.Contracts.CreateUserRequest,System.Threading.CancellationToken)">
+            <summary>Initiates a new staff record. A super admin's creation is auto-approved; anyone else needs UserClass = Initiator and leaves it Pending for an Authorizer of the same user_type.</summary>
+        </member>
+        <member name="T:BCKash.Api.Infrastructure.CurrentHttpUserContext">
+            <summary>
+            Reads "who is calling" from the current request's JWT claims (set by
+            JwtTokenService.GenerateAccessToken). Scoped per-request — registered as Scoped
+            in DI so the audit interceptor and permission checks see a consistent caller for
+            the whole request.
+            </summary>
+        </member>
+        <member name="T:BCKash.Api.OpenApi.BearerSecuritySchemeTransformer">
+            <summary>
+            Registers the JWT bearer scheme with the OpenAPI document and requires it on every
+            operation, so Swagger UI's "Authorize" button can be used to call protected endpoints.
+            </summary>
+        </member>
+        <member name="M:BCKash.Api.OpenApi.BearerSecuritySchemeTransformer.#ctor(Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider)">
+            <summary>
+            Registers the JWT bearer scheme with the OpenAPI document and requires it on every
+            operation, so Swagger UI's "Authorize" button can be used to call protected endpoints.
+            </summary>
+        </member>
+        <member name="T:Program">
+            <summary>
+            Auto-generated public partial Program class for top-level statement apps.
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Type)">
+            <summary>
+            Generates a documentation comment ID for a type.
+            Example: T:Namespace.Outer+Inner`1 becomes T:Namespace.Outer.Inner`1
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Reflection.PropertyInfo)">
+            <summary>
+            Generates a documentation comment ID for a property.
+            Example: P:Namespace.ContainingType.PropertyName or for an indexer P:Namespace.ContainingType.Item(System.Int32)
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Type,System.String)">
+            <summary>
+            Generates a documentation comment ID for a property given its container type and property name.
+            Example: P:Namespace.ContainingType.PropertyName
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Reflection.MethodInfo)">
+            <summary>
+            Generates a documentation comment ID for a method (or constructor).
+            For example:
+              M:Namespace.ContainingType.MethodName(ParamType1,ParamType2)~ReturnType
+              M:Namespace.ContainingType.#ctor(ParamType)
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.GetTypeDocId(System.Type,System.Boolean,System.Boolean)">
+            <summary>
+            Generates a documentation ID string for a type.
+            This method handles nested types (replacing '+' with '.'),
+            generic types, arrays, pointers, by-ref types, and generic parameters.
+            The <paramref name="includeGenericArguments"/> flag controls whether
+            constructed generic type arguments are emitted, while <paramref name="omitGenericArity"/>
+            controls whether the generic arity marker (e.g. "`1") is appended.
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.NormalizeDocId(System.String)">
+            <summary>
+            Normalizes a documentation comment ID to match the compiler-style format.
+            Strips the return type suffix for ordinary methods but retains it for conversion operators.
+            </summary>
+            <param name="docId">The documentation comment ID to normalize.</param>
+            <returns>The normalized documentation comment ID.</returns>
+        </member>
+    </members>
+</doc>
