@@ -28,10 +28,12 @@ using BCKash.Infrastructure.Organization;
 using BCKash.Infrastructure.PayrollProcessing;
 using BCKash.Infrastructure.Reporting;
 using BCKash.Infrastructure.Savings;
+using EFCoreSecondLevelCacheInterceptor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
+using StackExchange.Redis;
 
 namespace BCKash.Infrastructure;
 
@@ -54,7 +56,7 @@ public static class InfrastructureServiceCollectionExtensions
             if (string.IsNullOrWhiteSpace(connectionString))
             {
                 throw new InvalidOperationException(
-                    "ConnectionStrings:BCKashDb is not configured — set it via `dotnet user-secrets set ConnectionStrings:BCKashDb \"<value>\"` for local development.");
+                    "ConnectionStrings:BCKashDb is not configured — set ConnectionStrings__BCKashDb in BCKashServer2.0/.env (copy .env.example) for local development.");
             }
 
             // Integration tests run against SQLite (no MySQL instance available in this
@@ -82,8 +84,51 @@ public static class InfrastructureServiceCollectionExtensions
                 options.UseMySql(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));
             }
 
-            options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
+            options.AddInterceptors(
+                sp.GetRequiredService<AuditSaveChangesInterceptor>(),
+                sp.GetRequiredService<SecondLevelCacheInterceptor>());
         });
+
+        // Same Testing:UseSqlite flag used for the DB provider and email/SMS fakes below — no
+        // Redis instance is available in the test environment either, so tests get an in-memory
+        // IDistributedCache and EF second-level cache instead of a real connection.
+        if (configuration.GetValue<bool>("Testing:UseSqlite"))
+        {
+            services.AddDistributedMemoryCache();
+            services.AddEFSecondLevelCache(options =>
+                options.UseMemoryCacheProvider()
+                       .CacheAllQueries(CacheExpirationMode.Absolute, TimeSpan.FromMinutes(5)));
+        }
+        else
+        {
+            var redisConnectionString = configuration.GetConnectionString("Redis");
+            if (string.IsNullOrWhiteSpace(redisConnectionString))
+            {
+                throw new InvalidOperationException(
+                    "ConnectionStrings:Redis is not configured — set ConnectionStrings__Redis in BCKashServer2.0/.env (copy .env.example) for local development.");
+            }
+
+            services.AddSingleton<IConnectionMultiplexer>(
+                _ => ConnectionMultiplexer.Connect(redisConnectionString));
+            services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = redisConnectionString;
+                options.InstanceName = "BCKash:";
+            });
+
+            // Every EF Core query BCKashDbContext runs is cached in Redis (keyed by the query +
+            // its parameters), and every SaveChanges automatically invalidates the cache entries
+            // for whichever tables it just wrote to — see SecondLevelCacheInterceptor wired into
+            // BCKashDbContext above. This covers all reads/writes made through the DbContext; it
+            // would NOT cover ExecuteUpdate/ExecuteDelete bulk operations, which bypass
+            // SaveChanges — none exist in this codebase today (grep for them before adding one).
+            services.AddEFSecondLevelCache(options =>
+                options.UseStackExchangeRedisCacheProvider(
+                        ConfigurationOptions.Parse(redisConnectionString), TimeSpan.FromMinutes(5))
+                       .CacheAllQueries(CacheExpirationMode.Absolute, TimeSpan.FromMinutes(5))
+                       .UseCacheKeyPrefix("EF_")
+                       .UseDbCallsIfCachingProviderIsDown(TimeSpan.FromMinutes(1)));
+        }
 
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton<ITotpService, OtpNetTotpService>();

@@ -5,10 +5,24 @@ using BCKash.Api.Infrastructure;
 using BCKash.Api.OpenApi;
 using BCKash.Application.Auth;
 using BCKash.Infrastructure;
+using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+
+// Loads BCKashServer2.0/.env into the process environment for local `dotnet run`, walking up
+// from the current directory to find it regardless of whether it's run from the repo root or
+// from BCKash.Api/. In docker-compose the same keys arrive as real container env vars via
+// `env_file`, so there's no .env on disk inside the container and this is a no-op there.
+try
+{
+    DotNetEnv.Env.TraversePath().Load();
+}
+catch (FileNotFoundException)
+{
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +30,7 @@ var jwtSigningKey = builder.Configuration["Jwt:SigningKey"];
 if (string.IsNullOrWhiteSpace(jwtSigningKey))
 {
     throw new InvalidOperationException(
-        "Jwt:SigningKey is not configured — set it via `dotnet user-secrets set Jwt:SigningKey \"<a long random value>\"` for local development.");
+        "Jwt:SigningKey is not configured — set Jwt__SigningKey in BCKashServer2.0/.env (copy .env.example) for local development.");
 }
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
@@ -95,6 +109,18 @@ builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHand
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+// Applies any pending EF Core migrations on startup — idempotent, so it's a no-op once the DB
+// is up to date. Without this, a fresh database (e.g. the first time a docker-composed MySQL
+// container boots against an empty volume) has no tables at all, and IdentityBootstrapSeeder /
+// ReferenceDataSeeder crash the app trying to query them. Skipped under Testing:UseSqlite,
+// where BCKashWebApplicationFactory creates the SQLite schema directly via EnsureCreated()
+// instead — mixing that with Migrate() isn't supported (no migrations history table exists).
+if (!app.Configuration.GetValue<bool>("Testing:UseSqlite"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    migrationScope.ServiceProvider.GetRequiredService<BCKashDbContext>().Database.Migrate();
+}
 
 if (app.Environment.IsDevelopment())
 {

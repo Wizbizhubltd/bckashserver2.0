@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/*.user
+.git/
+.github/
+.DS_Store
+
+.env
+.env.*
+!.env.example
+
+docs/
+tests/
+*.md

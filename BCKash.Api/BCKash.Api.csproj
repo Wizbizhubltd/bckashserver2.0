@@ -8,6 +8,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="DotNetEnv" Version="3.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
@@ -22,7 +23,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>19ba59c4-4639-4ad5-a6fc-df2d3dcbe317</UserSecretsId>
     <!-- Lets Microsoft.AspNetCore.OpenApi pick up ///-comments as operation/schema
          descriptions; NoWarn since most of the 306 existing endpoints don't have them yet. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
