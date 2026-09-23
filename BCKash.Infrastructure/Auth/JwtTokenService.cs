@@ -1,0 +1,150 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using BCKash.Application.Auth;
+using BCKash.Domain.Identity;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+
+namespace BCKash.Infrastructure.Auth;
+
+public class JwtTokenService : IJwtTokenService
+{
+    private const string TwoFactorChallengeType = "2fa_challenge";
+    private const string LoginOtpChallengeType = "otp_challenge";
+
+    private readonly JwtSettings _settings;
+
+    public JwtTokenService(IOptions<JwtSettings> settings)
+    {
+        _settings = settings.Value;
+    }
+
+    public AccessToken GenerateAccessToken(User user, IReadOnlyCollection<string> permissionSlugs)
+    {
+        var expiresAt = DateTime.UtcNow.AddMinutes(_settings.AccessTokenMinutes);
+
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Email, user.Email),
+        };
+
+        if (user.OfficeId.HasValue)
+        {
+            claims.Add(new Claim("office_id", user.OfficeId.Value.ToString()));
+        }
+
+        claims.AddRange(permissionSlugs.Select(slug => new Claim("permission", slug)));
+
+        var token = CreateToken(claims, expiresAt);
+        return new AccessToken(token, expiresAt);
+    }
+
+    public string GenerateTwoFactorChallengeToken(int userId)
+    {
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new Claim("type", TwoFactorChallengeType),
+        };
+
+        // Five minutes is enough to type a 6-digit code, short enough to limit replay if intercepted.
+        return CreateToken(claims, DateTime.UtcNow.AddMinutes(5));
+    }
+
+    public int? ValidateTwoFactorChallengeToken(string challengeToken)
+    {
+        var principal = ValidateToken(challengeToken);
+        if (principal is null)
+        {
+            return null;
+        }
+
+        var type = principal.FindFirst("type")?.Value;
+        // JwtSecurityTokenHandler remaps "sub" to ClaimTypes.NameIdentifier on validation by
+        // default (MapInboundClaims) — look it up under the remapped type, not the original "sub".
+        var sub = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (type != TwoFactorChallengeType || !int.TryParse(sub, out var userId))
+        {
+            return null;
+        }
+
+        return userId;
+    }
+
+    public string GenerateLoginOtpChallengeToken(int userId, int otpId)
+    {
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new Claim("type", LoginOtpChallengeType),
+            new Claim("otp_id", otpId.ToString()),
+        };
+
+        // Five minutes is enough to receive and type a 6-digit code, short enough to limit replay if intercepted.
+        return CreateToken(claims, DateTime.UtcNow.AddMinutes(5));
+    }
+
+    public (int UserId, int OtpId)? ValidateLoginOtpChallengeToken(string challengeToken)
+    {
+        var principal = ValidateToken(challengeToken);
+        if (principal is null)
+        {
+            return null;
+        }
+
+        var type = principal.FindFirst("type")?.Value;
+        var sub = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var otpIdClaim = principal.FindFirst("otp_id")?.Value;
+
+        if (type != LoginOtpChallengeType || !int.TryParse(sub, out var userId) || !int.TryParse(otpIdClaim, out var otpId))
+        {
+            return null;
+        }
+
+        return (userId, otpId);
+    }
+
+    private string CreateToken(IEnumerable<Claim> claims, DateTime expiresAtUtc)
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.SigningKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: _settings.Issuer,
+            audience: _settings.Audience,
+            claims: claims,
+            expires: expiresAtUtc,
+            signingCredentials: credentials);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private ClaimsPrincipal? ValidateToken(string token)
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.SigningKey));
+        var handler = new JwtSecurityTokenHandler();
+
+        try
+        {
+            return handler.ValidateToken(token, new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = _settings.Issuer,
+                ValidateAudience = true,
+                ValidAudience = _settings.Audience,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = key,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero,
+            }, out _);
+        }
+        catch (SecurityTokenException)
+        {
+            return null;
+        }
+    }
+}

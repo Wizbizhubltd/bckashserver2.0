@@ -1,0 +1,171 @@
+using BCKash.Application.Assets;
+using BCKash.Application.Auth;
+using BCKash.Application.Clients;
+using BCKash.Application.Communications;
+using BCKash.Application.Expenses;
+using BCKash.Application.Files;
+using BCKash.Application.GeneralLedger;
+using BCKash.Application.Groups;
+using BCKash.Application.Identity;
+using BCKash.Application.Loans;
+using BCKash.Application.Organization;
+using BCKash.Application.PayrollProcessing;
+using BCKash.Application.Reporting;
+using BCKash.Application.Savings;
+using BCKash.Infrastructure.Assets;
+using BCKash.Infrastructure.Audit;
+using BCKash.Infrastructure.Auth;
+using BCKash.Infrastructure.Clients;
+using BCKash.Infrastructure.Communications;
+using BCKash.Infrastructure.Data;
+using BCKash.Infrastructure.Expenses;
+using BCKash.Infrastructure.Files;
+using BCKash.Infrastructure.GeneralLedger;
+using BCKash.Infrastructure.Groups;
+using BCKash.Infrastructure.Identity;
+using BCKash.Infrastructure.Loans;
+using BCKash.Infrastructure.Organization;
+using BCKash.Infrastructure.PayrollProcessing;
+using BCKash.Infrastructure.Reporting;
+using BCKash.Infrastructure.Savings;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using MySqlConnector;
+
+namespace BCKash.Infrastructure;
+
+public static class InfrastructureServiceCollectionExtensions
+{
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
+        services.Configure<LoginThrottleSettings>(configuration.GetSection(LoginThrottleSettings.SectionName));
+        services.Configure<FileStorageSettings>(configuration.GetSection(FileStorageSettings.SectionName));
+        services.Configure<EmailSettings>(configuration.GetSection(EmailSettings.SectionName));
+        services.Configure<SmsSettings>(configuration.GetSection(SmsSettings.SectionName));
+        services.Configure<IdentityBootstrapSettings>(configuration.GetSection(IdentityBootstrapSettings.SectionName));
+
+        services.AddScoped<AuditSaveChangesInterceptor>();
+
+        services.AddDbContext<BCKashDbContext>((sp, options) =>
+        {
+            var connectionString = configuration.GetConnectionString("BCKashDb");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "ConnectionStrings:BCKashDb is not configured — set it via `dotnet user-secrets set ConnectionStrings:BCKashDb \"<value>\"` for local development.");
+            }
+
+            // Integration tests run against SQLite (no MySQL instance available in this
+            // environment — see Phase 0 plan) via this single config-driven switch, rather than
+            // a second AddDbContext call in the test host: EF Core doesn't support two different
+            // providers' services coexisting in the same DI container, even if only one
+            // DbContextOptions registration survives.
+            if (configuration.GetValue<bool>("Testing:UseSqlite"))
+            {
+                options.UseSqlite(connectionString);
+            }
+            else
+            {
+                // ConvertZeroDateTime: the legacy schema (and any dump of it) can contain
+                // zero-value dates ('0000-00-00'/'0000-00-00 00:00:00') — MySQL happily stores
+                // these but MySqlConnector rejects them on read by default. This maps them to
+                // DateTime.MinValue instead of throwing, regardless of what's in the configured
+                // connection string, so every environment gets this without a manual edit.
+                var builder = new MySqlConnectionStringBuilder(connectionString) { ConvertZeroDateTime = true };
+
+                // A fixed server version, not ServerVersion.AutoDetect(...) — AutoDetect needs a
+                // live connection at startup, which would make the API fail to boot whenever the
+                // database is briefly unreachable. BCKash targets MySQL/MariaDB per the BRD;
+                // adjust if the target instance is meaningfully older/newer than 8.0.
+                options.UseMySql(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));
+            }
+
+            options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
+        });
+
+        services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
+        services.AddSingleton<ITotpService, OtpNetTotpService>();
+        services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<ILoginThrottleService, LoginThrottleService>();
+        services.AddScoped<IPermissionService, PermissionService>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IOfficeService, OfficeService>();
+        services.AddScoped<IClientService, ClientService>();
+        services.AddScoped<IFileStorageService, LocalDiskFileStorageService>();
+        services.AddScoped<IGroupService, GroupService>();
+        services.AddScoped<IGroupMembershipService, GroupMembershipService>();
+        services.AddScoped<ILoanProductService, LoanProductService>();
+        services.AddScoped<ILoanApplicationService, LoanApplicationService>();
+        services.AddScoped<ILoanService, LoanService>();
+        services.AddScoped<ILoanGlPostingService, LoanGlPostingService>();
+        services.AddScoped<ILoanRepaymentService, LoanRepaymentService>();
+        services.AddScoped<ILoanWaiverService, LoanWaiverService>();
+        services.AddScoped<ILoanRescheduleService, LoanRescheduleService>();
+        services.AddScoped<ILoanWriteOffService, LoanWriteOffService>();
+        services.AddScoped<ILoanNpaService, LoanNpaService>();
+        services.AddScoped<IGlClosureGuard, GlClosureGuard>();
+        services.AddScoped<IGlAccountService, GlAccountService>();
+        services.AddScoped<IManualJournalEntryService, ManualJournalEntryService>();
+        services.AddScoped<IGlJournalEntryService, GlJournalEntryService>();
+        services.AddScoped<IGlClosureService, GlClosureService>();
+        services.AddScoped<IOfficeTransferService, OfficeTransferService>();
+        services.AddScoped<IGlReportService, GlReportService>();
+        services.AddScoped<ISavingsProductService, SavingsProductService>();
+        services.AddScoped<ISavingsAccountService, SavingsAccountService>();
+        services.AddScoped<ISavingsTransactionService, SavingsTransactionService>();
+        services.AddScoped<ISavingsChargeService, SavingsChargeService>();
+        services.AddScoped<ISavingsInterestPostingService, SavingsInterestPostingService>();
+        services.AddScoped<ISavingsGlPostingService, SavingsGlPostingService>();
+        services.AddScoped<ISavingsTransferService, SavingsTransferService>();
+        services.AddScoped<IAssetTypeService, AssetTypeService>();
+        services.AddScoped<IAssetService, AssetService>();
+        services.AddScoped<IAssetDepreciationService, AssetDepreciationService>();
+        services.AddScoped<IAssetGlPostingService, AssetGlPostingService>();
+        services.AddScoped<IExpenseTypeService, ExpenseTypeService>();
+        services.AddScoped<IExpenseService, ExpenseService>();
+        services.AddScoped<IExpenseGlPostingService, ExpenseGlPostingService>();
+        services.AddScoped<IExpenseBudgetService, ExpenseBudgetService>();
+        services.AddScoped<IOtherIncomeTypeService, OtherIncomeTypeService>();
+        services.AddScoped<IOtherIncomeService, OtherIncomeService>();
+        services.AddScoped<IOtherIncomeGlPostingService, OtherIncomeGlPostingService>();
+        services.AddScoped<IPayrollTemplateService, PayrollTemplateService>();
+        services.AddScoped<IPayrollService, PayrollService>();
+        services.AddScoped<IPayrollGlPostingService, PayrollGlPostingService>();
+        services.AddScoped<ICampaignRecipientService, CampaignRecipientService>();
+        services.AddScoped<ICommunicationCampaignService, CommunicationCampaignService>();
+        services.AddScoped<ISmsGatewayService, SmsGatewayService>();
+        services.AddScoped<IReminderService, ReminderService>();
+        services.AddScoped<IClientReportService, ClientReportService>();
+        services.AddScoped<ILoanReportService, LoanReportService>();
+        services.AddScoped<IGroupReportService, GroupReportService>();
+        services.AddScoped<ISavingsReportService, SavingsReportService>();
+        services.AddScoped<IOrganisationReportService, OrganisationReportService>();
+        services.AddScoped<IReportCatalogService, ReportCatalogService>();
+        services.AddScoped<IReportExporter, ReportExporter>();
+        services.AddScoped<IReportSchedulerService, ReportSchedulerService>();
+        services.AddScoped<IUserService, UserService>();
+
+        // No test environment can actually deliver SMTP mail or hit a real SMS gateway, so the
+        // same Testing:UseSqlite flag that already switches the DB provider also swaps these two
+        // for recording fakes tests can inspect (see RecordingEmailSender's doc comment).
+        if (configuration.GetValue<bool>("Testing:UseSqlite"))
+        {
+            services.AddSingleton<IEmailSender, RecordingEmailSender>();
+            services.AddSingleton<ISmsSender, RecordingSmsSender>();
+            services.AddSingleton<IOtpSmsSender, RecordingOtpSmsSender>();
+        }
+        else
+        {
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+            services.AddHttpClient<ISmsSender, HttpSmsGatewaySender>();
+            services.AddHttpClient<IOtpSmsSender, TermiiOtpSmsSender>();
+        }
+
+        services.AddHostedService<ReferenceDataSeeder>();
+        services.AddHostedService<IdentityBootstrapSeeder>();
+
+        return services;
+    }
+}

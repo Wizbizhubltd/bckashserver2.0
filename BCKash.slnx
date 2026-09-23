@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/BCKash.Api.IntegrationTests/BCKash.Api.IntegrationTests.csproj" />
+    <Project Path="tests/BCKash.Application.Tests/BCKash.Application.Tests.csproj" />
+    <Project Path="tests/BCKash.Domain.Tests/BCKash.Domain.Tests.csproj" />
+  </Folder>
+  <Project Path="BCKash.Api/BCKash.Api.csproj" />
+  <Project Path="BCKash.Application/BCKash.Application.csproj" />
+  <Project Path="BCKash.Domain/BCKash.Domain.csproj" />
+  <Project Path="BCKash.Infrastructure/BCKash.Infrastructure.csproj" />
+  <Project Path="BCKash.SharedKernel/BCKash.SharedKernel.csproj" />
+</Solution>

@@ -1,0 +1,13 @@
+# .NET build output
+bin/
+obj/
+
+# IDE
+.vs/
+.idea/
+*.user
+
+# BCKashWebClient keeps its own independent git history/remote — not nested into this repo.
+BCKashWebClient/
+
+.DS_Store
