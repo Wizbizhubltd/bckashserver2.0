@@ -35,18 +35,18 @@ public class SavingsTransactionsControllerTests : IClassFixture<BCKashWebApplica
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
 
     private static async Task<SavingsAccountResponse> OpenAndApproveAsync(HttpClient client, string label, SaveSavingsProductRequest productRequest, decimal openingBalance, decimal? overdraftLimit = null)
     {
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", productRequest)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", productRequest)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         var clientId = await CreateClientAsync(client, label);
-        var account = await (await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
+        var account = await (await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
-        var approved = await (await client.PostAsJsonAsync($"/api/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(openingBalance, overdraftLimit, new DateOnly(2026, 1, 1), null)))
+        var approved = await (await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(openingBalance, overdraftLimit, new DateOnly(2026, 1, 1), null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
         return approved!;
     }
@@ -57,10 +57,10 @@ public class SavingsTransactionsControllerTests : IClassFixture<BCKashWebApplica
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-txn-deposit@bckash.test", AllPermissions);
         var account = await OpenAndApproveAsync(client, "TxnDeposit", ProductRequest("Deposit Product"), 1000m);
 
-        var response = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/transactions/deposit", new RecordSavingsTransactionRequest(500m, new DateOnly(2026, 1, 15), "Top up"));
+        var response = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/transactions/deposit", new RecordSavingsTransactionRequest(500m, new DateOnly(2026, 1, 15), "Top up"));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var updated = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{account.Id}", TestJson.Options);
+        var updated = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{account.Id}", TestJson.Options);
         Assert.Equal(1500m, updated!.Balance);
     }
 
@@ -72,10 +72,10 @@ public class SavingsTransactionsControllerTests : IClassFixture<BCKashWebApplica
         var account = await OpenAndApproveAsync(client, "TxnFloor", ProductRequest("Floor Product", minimumBalance: 1000m), 1500m);
 
         // 1500 - 600 = 900, below the 1000 minimum.
-        var response = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/transactions/withdrawal", new RecordSavingsTransactionRequest(600m, new DateOnly(2026, 1, 20), null));
+        var response = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/transactions/withdrawal", new RecordSavingsTransactionRequest(600m, new DateOnly(2026, 1, 20), null));
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
 
-        var unchanged = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{account.Id}", TestJson.Options);
+        var unchanged = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{account.Id}", TestJson.Options);
         Assert.Equal(1500m, unchanged!.Balance);
     }
 
@@ -86,10 +86,10 @@ public class SavingsTransactionsControllerTests : IClassFixture<BCKashWebApplica
         var account = await OpenAndApproveAsync(client, "TxnOverdraft", ProductRequest("Overdraft Product", allowOverdraft: true, minimumBalance: 1000m), 200m, overdraftLimit: 500m);
 
         // 200 - 600 = -400, within the -500 overdraft floor.
-        var response = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/transactions/withdrawal", new RecordSavingsTransactionRequest(600m, new DateOnly(2026, 1, 20), null));
+        var response = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/transactions/withdrawal", new RecordSavingsTransactionRequest(600m, new DateOnly(2026, 1, 20), null));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var updated = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{account.Id}", TestJson.Options);
+        var updated = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{account.Id}", TestJson.Options);
         Assert.Equal(-400m, updated!.Balance);
     }
 
@@ -99,16 +99,16 @@ public class SavingsTransactionsControllerTests : IClassFixture<BCKashWebApplica
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-txn-reverse@bckash.test", AllPermissions);
         var account = await OpenAndApproveAsync(client, "TxnReverse", ProductRequest("Reverse Product"), 1000m);
 
-        var depositResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/transactions/deposit", new RecordSavingsTransactionRequest(300m, new DateOnly(2026, 1, 15), null));
+        var depositResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/transactions/deposit", new RecordSavingsTransactionRequest(300m, new DateOnly(2026, 1, 15), null));
         var deposit = await depositResponse.Content.ReadFromJsonAsync<SavingsTransactionResponse>(TestJson.Options);
 
-        var afterDeposit = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{account.Id}", TestJson.Options);
+        var afterDeposit = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{account.Id}", TestJson.Options);
         Assert.Equal(1300m, afterDeposit!.Balance);
 
-        var reverseResponse = await client.PostAsync($"/api/savings-accounts/{account.Id}/transactions/{deposit!.Id}/reverse", null);
+        var reverseResponse = await client.PostAsync($"/api/v1/savings-accounts/{account.Id}/transactions/{deposit!.Id}/reverse", null);
         Assert.Equal(HttpStatusCode.OK, reverseResponse.StatusCode);
 
-        var afterReversal = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{account.Id}", TestJson.Options);
+        var afterReversal = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{account.Id}", TestJson.Options);
         Assert.Equal(1000m, afterReversal!.Balance);
     }
 }

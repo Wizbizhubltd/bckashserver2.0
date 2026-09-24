@@ -11,7 +11,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>Group membership roster/history (BR-GRP-2). "Remove" soft-removes — see GroupClient's and IGroupMembershipService's doc comments.</summary>
 [ApiController]
-[Route("api/groups/{groupId:int}/members")]
+[Route("api/v1/groups/{groupId:int}/members")]
 [Authorize]
 public class GroupMembersController : ControllerBase
 {

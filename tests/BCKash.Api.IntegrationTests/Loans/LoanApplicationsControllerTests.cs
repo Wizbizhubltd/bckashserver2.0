@@ -38,7 +38,7 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
 
     private static async Task<int> CreateProductAsync(HttpClient client, string name)
     {
-        var response = await client.PostAsJsonAsync("/api/loan-products", NewProductRequest(name));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest(name));
         var created = await response.Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -49,7 +49,7 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -64,7 +64,7 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
         var productId = await CreateProductAsync(client, "Application Product");
         var clientId = await CreateClientAsync(client, "Applicant");
 
-        var response = await client.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
@@ -79,7 +79,7 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
         var productId = await CreateProductAsync(client, "Range Product");
         var clientId = await CreateClientAsync(client, "RangeApplicant");
 
-        var response = await client.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId, amount: 50000));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId, amount: 50000));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -91,7 +91,7 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
         var productId = await CreateProductAsync(client, "Term Range Product");
         var clientId = await CreateClientAsync(client, "TermApplicant");
 
-        var response = await client.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId, term: 999));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId, term: 999));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -102,9 +102,9 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "application-approve@bckash.test", ["loan-applications.manage", "loan-applications.approve", "loan-products.manage", "clients.manage"]);
         var productId = await CreateProductAsync(client, "Approve Product");
         var clientId = await CreateClientAsync(client, "ApproveApplicant");
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId))).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId))).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
 
-        var approveResponse = await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(4500, "Looks good"));
+        var approveResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(4500, "Looks good"));
 
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
         var approved = await approveResponse.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
@@ -128,15 +128,15 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "application-decline@bckash.test", ["loan-applications.manage", "loan-applications.approve", "loan-products.manage", "clients.manage"]);
         var productId = await CreateProductAsync(client, "Decline Product");
         var clientId = await CreateClientAsync(client, "DeclineApplicant");
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId))).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId))).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
 
-        var declineResponse = await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/decline", new ReasonRequest("Insufficient collateral"));
+        var declineResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/decline", new ReasonRequest("Insufficient collateral"));
         Assert.Equal(HttpStatusCode.OK, declineResponse.StatusCode);
 
-        var secondDecline = await client.PostAsJsonAsync($"/api/loan-applications/{application.Id}/decline", new ReasonRequest("Trying again"));
+        var secondDecline = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application.Id}/decline", new ReasonRequest("Trying again"));
         Assert.Equal(HttpStatusCode.BadRequest, secondDecline.StatusCode);
 
-        var approveAfterDecline = await client.PostAsJsonAsync($"/api/loan-applications/{application.Id}/approve", new ApproveLoanApplicationRequest(1000, null));
+        var approveAfterDecline = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application.Id}/approve", new ApproveLoanApplicationRequest(1000, null));
         Assert.Equal(HttpStatusCode.BadRequest, approveAfterDecline.StatusCode);
     }
 
@@ -146,20 +146,20 @@ public class LoanApplicationsControllerTests : IClassFixture<BCKashWebApplicatio
         var manageOnlyClient = await AuthenticatedClientFactory.CreateAsync(_factory, "application-manage-only@bckash.test", ["loan-applications.manage", "loan-products.manage", "clients.manage"]);
         var productId = await CreateProductAsync(manageOnlyClient, "Permission Product");
         var clientId = await CreateClientAsync(manageOnlyClient, "PermissionApplicant");
-        var application = await (await manageOnlyClient.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId))).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var application = await (await manageOnlyClient.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId))).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
 
         // manage-only user cannot approve.
-        var forbiddenApprove = await manageOnlyClient.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(1000, null));
+        var forbiddenApprove = await manageOnlyClient.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(1000, null));
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenApprove.StatusCode);
 
         var approveOnlyClient = await AuthenticatedClientFactory.CreateAsync(_factory, "application-approve-only@bckash.test", "loan-applications.approve");
 
         // approve-only user cannot create.
-        var forbiddenCreate = await approveOnlyClient.PostAsJsonAsync("/api/loan-applications", NewApplicationRequest(productId, clientId));
+        var forbiddenCreate = await approveOnlyClient.PostAsJsonAsync("/api/v1/loan-applications", NewApplicationRequest(productId, clientId));
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenCreate.StatusCode);
 
         // approve-only user can approve the application the manage-only user created.
-        var approveResponse = await approveOnlyClient.PostAsJsonAsync($"/api/loan-applications/{application.Id}/approve", new ApproveLoanApplicationRequest(1000, null));
+        var approveResponse = await approveOnlyClient.PostAsJsonAsync($"/api/v1/loan-applications/{application.Id}/approve", new ApproveLoanApplicationRequest(1000, null));
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
     }
 }

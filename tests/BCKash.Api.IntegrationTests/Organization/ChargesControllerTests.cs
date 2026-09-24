@@ -20,7 +20,7 @@ public class ChargesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "charge-valid@bckash.test", "organization.manage");
 
-        var response = await client.PostAsJsonAsync("/api/charges", new SaveChargeRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/charges", new SaveChargeRequest(
             "Disbursement Fee", null, ChargeProduct.Loan, ChargeType.Disbursement, ChargeOption.Flat,
             0, ChargeFrequencyType.Days, 0, 500m, null, null, ChargePaymentMode.Regular, false, false, null));
 
@@ -32,7 +32,7 @@ public class ChargesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "charge-mismatched-type@bckash.test", "organization.manage");
 
-        var response = await client.PostAsJsonAsync("/api/charges", new SaveChargeRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/charges", new SaveChargeRequest(
             "Mismatched Charge", null, ChargeProduct.Loan, ChargeType.SavingsActivation, ChargeOption.Flat,
             0, ChargeFrequencyType.Days, 0, 500m, null, null, ChargePaymentMode.Regular, false, false, null));
 
@@ -44,7 +44,7 @@ public class ChargesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "charge-mismatched-option@bckash.test", "organization.manage");
 
-        var response = await client.PostAsJsonAsync("/api/charges", new SaveChargeRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/charges", new SaveChargeRequest(
             "Mismatched Option", null, ChargeProduct.Savings, ChargeType.WithdrawalFee, ChargeOption.InstallmentPrincipalDue,
             0, ChargeFrequencyType.Days, 0, 500m, null, null, ChargePaymentMode.Regular, false, false, null));
 

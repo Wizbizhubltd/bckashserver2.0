@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/clients/{clientId:int}/next-of-guardians")]
+[Route("api/v1/clients/{clientId:int}/next-of-guardians")]
 [Authorize]
 public class ClientNextOfGuardiansController : ControllerBase
 {

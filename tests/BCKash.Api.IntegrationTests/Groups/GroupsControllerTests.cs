@@ -28,14 +28,14 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "group-crud@bckash.test", "groups.manage");
 
-        var response = await client.PostAsJsonAsync("/api/groups", NewGroupRequest("Market Women's Group"));
+        var response = await client.PostAsJsonAsync("/api/v1/groups", NewGroupRequest("Market Women's Group"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<GroupResponse>(TestJson.Options);
         Assert.Equal("Market Women's Group", created!.Name);
         Assert.Equal(GroupStatus.Pending, created.Status);
 
-        var getResponse = await client.GetAsync($"/api/groups/{created.Id}");
+        var getResponse = await client.GetAsync($"/api/v1/groups/{created.Id}");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
     }
 
@@ -43,14 +43,14 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
     public async Task Update_applies_editable_fields_and_leaves_status_untouched()
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "group-update@bckash.test", "groups.manage");
-        var created = await (await client.PostAsJsonAsync("/api/groups", NewGroupRequest("Original Name"))).Content.ReadFromJsonAsync<GroupResponse>(TestJson.Options);
+        var created = await (await client.PostAsJsonAsync("/api/v1/groups", NewGroupRequest("Original Name"))).Content.ReadFromJsonAsync<GroupResponse>(TestJson.Options);
 
         var updateRequest = new UpdateGroupRequest(
             OfficeId: null, Name: "Updated Name", ExternalId: null, StaffId: null, JoinedDate: null,
             Mobile: "08012345678", Phone: null, Email: null,
             Street: null, Ward: null, District: null, Region: null, Address: null, Notes: "Weekly meeting");
 
-        var response = await client.PutAsJsonAsync($"/api/groups/{created!.Id}", updateRequest);
+        var response = await client.PutAsJsonAsync($"/api/v1/groups/{created!.Id}", updateRequest);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var updated = await response.Content.ReadFromJsonAsync<GroupResponse>(TestJson.Options);
@@ -101,11 +101,11 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
 
         var response = transition switch
         {
-            "activate" => await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/activate", new ActivateGroupRequest(null)),
-            "deactivate" => await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/deactivate", new ReasonRequest("Integration test reason")),
-            "reactivate" => await httpClient.PostAsync($"/api/groups/{groupId}/reactivate", null),
-            "decline" => await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/decline", new ReasonRequest("Integration test reason")),
-            "close" => await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/close", new ReasonRequest("Integration test reason")),
+            "activate" => await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/activate", new ActivateGroupRequest(null)),
+            "deactivate" => await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/deactivate", new ReasonRequest("Integration test reason")),
+            "reactivate" => await httpClient.PostAsync($"/api/v1/groups/{groupId}/reactivate", null),
+            "decline" => await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/decline", new ReasonRequest("Integration test reason")),
+            "close" => await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/close", new ReasonRequest("Integration test reason")),
             _ => throw new ArgumentOutOfRangeException(nameof(transition)),
         };
 
@@ -166,14 +166,14 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
         var httpClient = await AuthenticatedClientFactory.CreateAsync(_factory, "group-search@bckash.test", "groups.manage");
 
         var unique = Guid.NewGuid().ToString("N")[..8];
-        await httpClient.PostAsJsonAsync("/api/groups", NewGroupRequest($"Unity{unique} Group"));
-        await httpClient.PostAsJsonAsync("/api/groups", NewGroupRequest("Some Other Group"));
+        await httpClient.PostAsJsonAsync("/api/v1/groups", NewGroupRequest($"Unity{unique} Group"));
+        await httpClient.PostAsJsonAsync("/api/v1/groups", NewGroupRequest("Some Other Group"));
 
-        var byName = await httpClient.GetFromJsonAsync<PagedResult<GroupListItemResponse>>($"/api/groups?search=Unity{unique}", TestJson.Options);
+        var byName = await httpClient.GetFromJsonAsync<PagedResult<GroupListItemResponse>>($"/api/v1/groups?search=Unity{unique}", TestJson.Options);
         Assert.Equal(1, byName!.TotalCount);
         Assert.Equal($"Unity{unique} Group", byName.Items[0].Name);
 
-        var noMatch = await httpClient.GetFromJsonAsync<PagedResult<GroupListItemResponse>>($"/api/groups?search=NoSuchGroup{unique}", TestJson.Options);
+        var noMatch = await httpClient.GetFromJsonAsync<PagedResult<GroupListItemResponse>>($"/api/v1/groups?search=NoSuchGroup{unique}", TestJson.Options);
         Assert.Equal(0, noMatch!.TotalCount);
     }
 
@@ -182,7 +182,7 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var anonymous = _factory.CreateClient();
 
-        var response = await anonymous.GetAsync("/api/groups");
+        var response = await anonymous.GetAsync("/api/v1/groups");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -200,10 +200,10 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
         var httpClient = _factory.CreateClient();
         httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens.AccessToken);
 
-        var readResponse = await httpClient.GetAsync("/api/groups");
+        var readResponse = await httpClient.GetAsync("/api/v1/groups");
         Assert.Equal(HttpStatusCode.OK, readResponse.StatusCode);
 
-        var writeResponse = await httpClient.PostAsJsonAsync("/api/groups", NewGroupRequest("No Permission"));
+        var writeResponse = await httpClient.PostAsJsonAsync("/api/v1/groups", NewGroupRequest("No Permission"));
         Assert.Equal(HttpStatusCode.Forbidden, writeResponse.StatusCode);
     }
 }

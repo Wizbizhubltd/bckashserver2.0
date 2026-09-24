@@ -37,17 +37,17 @@ public class SavingsInterestPostingTests : IClassFixture<BCKashWebApplicationFac
             GlAccountSavingsReferenceId: cashAccountId, GlAccountOverdraftPortfolioId: null, GlAccountSavingsControlId: cashAccountId,
             GlAccountInterestOnSavingsId: interestExpenseAccountId, GlAccountSavingsWrittenOffId: null, GlAccountIncomeInterestId: null,
             GlAccountIncomeFeeId: null, GlAccountIncomePenaltyId: null);
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", productRequest)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", productRequest)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
 
         var clientRequest = new CreateClientRequest(
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var borrower = await (await client.PostAsJsonAsync("/api/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
+        var borrower = await (await client.PostAsJsonAsync("/api/v1/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
 
-        var account = await (await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, borrower!.Id, null, null, product!.Id, null)))
+        var account = await (await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, borrower!.Id, null, null, product!.Id, null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
-        var approved = await (await client.PostAsJsonAsync($"/api/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(openingBalance, null, new DateOnly(2026, 1, 1), null)))
+        var approved = await (await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(openingBalance, null, new DateOnly(2026, 1, 1), null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
 
         return approved!.Id;
@@ -55,7 +55,7 @@ public class SavingsInterestPostingTests : IClassFixture<BCKashWebApplicationFac
 
     private static async Task<int> CreateGlAccountAsync(HttpClient client, string name, string code, GlAccountType type)
     {
-        var response = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
+        var response = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
         var created = await response.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -70,21 +70,21 @@ public class SavingsInterestPostingTests : IClassFixture<BCKashWebApplicationFac
         // Constant 10,000 balance for 31 days (2026-01-01 -> 2026-02-01), 7.2%/360 days.
         var accountId = await CreateAccountAsync(client, cash, interestExpense, InterestCalculationType.Daily, "InterestDaily", 10000m);
 
-        var runResponse = await client.PostAsync($"/api/savings-interest/run?asOfDate=2026-02-01", null);
+        var runResponse = await client.PostAsync($"/api/v1/savings-interest/run?asOfDate=2026-02-01", null);
         Assert.Equal(System.Net.HttpStatusCode.OK, runResponse.StatusCode);
 
-        var account = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{accountId}", TestJson.Options);
+        var account = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{accountId}", TestJson.Options);
         // 10000 * 0.072 / 360 * 31 = 10000 * 0.0002 * 31 = 62.00
         Assert.Equal(62.00m, account!.InterestEarned);
         Assert.Equal(10062.00m, account.Balance);
         Assert.Equal(new DateOnly(2026, 3, 1), account.NextInterestPostingDate);
 
-        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?glAccountId={interestExpense}", TestJson.Options);
+        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?glAccountId={interestExpense}", TestJson.Options);
         var interestEntries = entries!.Where(e => e.TransactionType == GlTransactionType.Interest).ToList();
         Assert.NotEmpty(interestEntries);
         Assert.Equal(62.00m, interestEntries.Single().Debit);
 
-        var controlEntries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?glAccountId={cash}", TestJson.Options);
+        var controlEntries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?glAccountId={cash}", TestJson.Options);
         var interestControlEntry = controlEntries!.Single(e => e.TransactionType == GlTransactionType.Interest);
         Assert.Equal(62.00m, interestControlEntry.Credit);
         Assert.True(interestEntries.Single().Approved);
@@ -100,12 +100,12 @@ public class SavingsInterestPostingTests : IClassFixture<BCKashWebApplicationFac
         var accountId = await CreateAccountAsync(client, cash, interestExpense, InterestCalculationType.Average, "InterestAverage", 10000m);
 
         // A deposit lands partway through the period — opening 10000, closing 15000.
-        await client.PostAsJsonAsync($"/api/savings-accounts/{accountId}/transactions/deposit", new RecordSavingsTransactionRequest(5000m, new DateOnly(2026, 1, 11), "Mid-period deposit"));
+        await client.PostAsJsonAsync($"/api/v1/savings-accounts/{accountId}/transactions/deposit", new RecordSavingsTransactionRequest(5000m, new DateOnly(2026, 1, 11), "Mid-period deposit"));
 
-        var runResponse = await client.PostAsync($"/api/savings-interest/run?asOfDate=2026-02-01", null);
+        var runResponse = await client.PostAsync($"/api/v1/savings-interest/run?asOfDate=2026-02-01", null);
         Assert.Equal(System.Net.HttpStatusCode.OK, runResponse.StatusCode);
 
-        var account = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{accountId}", TestJson.Options);
+        var account = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{accountId}", TestJson.Options);
         // Average balance (10000+15000)/2 = 12500, over 31 days at 0.0002/day = 12500 * 0.0002 * 31 = 77.50
         Assert.Equal(77.50m, account!.InterestEarned);
     }

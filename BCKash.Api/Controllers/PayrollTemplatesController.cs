@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/payroll-templates")]
+[Route("api/v1/payroll-templates")]
 [Authorize]
 public class PayrollTemplatesController : ControllerBase
 {

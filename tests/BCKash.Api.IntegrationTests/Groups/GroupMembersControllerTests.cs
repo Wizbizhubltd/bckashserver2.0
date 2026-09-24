@@ -18,7 +18,7 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
     private static async Task<int> CreateGroupAsync(HttpClient client, string name)
     {
         var request = new CreateGroupRequest(null, name, null, null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/groups", request);
+        var response = await client.PostAsJsonAsync("/api/v1/groups", request);
         var created = await response.Content.ReadFromJsonAsync<GroupResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -29,7 +29,7 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -41,7 +41,7 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
         var groupId = await CreateGroupAsync(httpClient, "Roster Group");
         var clientId = await CreateClientAsync(httpClient, "Roster");
 
-        var addResponse = await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
+        var addResponse = await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
         Assert.Equal(HttpStatusCode.Created, addResponse.StatusCode);
         var added = await addResponse.Content.ReadFromJsonAsync<GroupMemberResponse>(TestJson.Options);
         Assert.NotNull(added!.CreatedById);
@@ -49,16 +49,16 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
         Assert.Null(added.RemovedAt);
         Assert.Equal(clientId, added.ClientId);
 
-        var rosterResponse = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/groups/{groupId}/members", TestJson.Options);
+        var rosterResponse = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/v1/groups/{groupId}/members", TestJson.Options);
         Assert.Single(rosterResponse!);
 
-        var removeResponse = await httpClient.DeleteAsync($"/api/groups/{groupId}/members/{added.Id}");
+        var removeResponse = await httpClient.DeleteAsync($"/api/v1/groups/{groupId}/members/{added.Id}");
         Assert.Equal(HttpStatusCode.NoContent, removeResponse.StatusCode);
 
-        var rosterAfterRemoval = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/groups/{groupId}/members", TestJson.Options);
+        var rosterAfterRemoval = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/v1/groups/{groupId}/members", TestJson.Options);
         Assert.Empty(rosterAfterRemoval!);
 
-        var fullHistory = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/groups/{groupId}/members?includeRemoved=true", TestJson.Options);
+        var fullHistory = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/v1/groups/{groupId}/members?includeRemoved=true", TestJson.Options);
         var historical = Assert.Single(fullHistory!);
         Assert.NotNull(historical.RemovedAt);
         Assert.NotNull(historical.RemovedById);
@@ -71,15 +71,15 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
         var groupId = await CreateGroupAsync(httpClient, "Re-add Group");
         var clientId = await CreateClientAsync(httpClient, "Readd");
 
-        var first = await (await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/members", new AddGroupMemberRequest(clientId))).Content.ReadFromJsonAsync<GroupMemberResponse>(TestJson.Options);
-        await httpClient.DeleteAsync($"/api/groups/{groupId}/members/{first!.Id}");
+        var first = await (await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/members", new AddGroupMemberRequest(clientId))).Content.ReadFromJsonAsync<GroupMemberResponse>(TestJson.Options);
+        await httpClient.DeleteAsync($"/api/v1/groups/{groupId}/members/{first!.Id}");
 
-        var secondResponse = await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
+        var secondResponse = await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
         Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
         var second = await secondResponse.Content.ReadFromJsonAsync<GroupMemberResponse>(TestJson.Options);
         Assert.NotEqual(first.Id, second!.Id);
 
-        var fullHistory = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/groups/{groupId}/members?includeRemoved=true", TestJson.Options);
+        var fullHistory = await httpClient.GetFromJsonAsync<List<GroupMemberResponse>>($"/api/v1/groups/{groupId}/members?includeRemoved=true", TestJson.Options);
         Assert.Equal(2, fullHistory!.Count);
     }
 
@@ -90,8 +90,8 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
         var groupId = await CreateGroupAsync(httpClient, "Duplicate Group");
         var clientId = await CreateClientAsync(httpClient, "Duplicate");
 
-        await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
-        var secondAdd = await httpClient.PostAsJsonAsync($"/api/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
+        await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
+        var secondAdd = await httpClient.PostAsJsonAsync($"/api/v1/groups/{groupId}/members", new AddGroupMemberRequest(clientId));
 
         Assert.Equal(HttpStatusCode.Conflict, secondAdd.StatusCode);
     }
@@ -101,7 +101,7 @@ public class GroupMembersControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var httpClient = await AuthenticatedClientFactory.CreateAsync(_factory, "member-404@bckash.test", "groups.manage");
 
-        var response = await httpClient.GetAsync("/api/groups/999999/members");
+        var response = await httpClient.GetAsync("/api/v1/groups/999999/members");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

@@ -39,7 +39,7 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
         var superAdminPassword = ExtractPassword(recordingSender, superAdminEmail);
         var superAdminClient = await LoginAsync(factory, superAdminEmail, superAdminPassword);
 
-        var me = await superAdminClient.GetFromJsonAsync<UserResponse>("/api/users/me", TestJson.Options);
+        var me = await superAdminClient.GetFromJsonAsync<UserResponse>("/api/v1/users/me", TestJson.Options);
         Assert.Equal(UserTypeSlugs.SuperAdmin, me!.UserType);
         Assert.Equal(UserOnboardingStatus.Approved, me.OnboardingStatus);
 
@@ -57,7 +57,7 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
         var directorInitiatorPassword = ExtractPassword(recordingSender, "director-initiator@bckash.test");
         var directorInitiatorClient = await LoginAsync(factory, "director-initiator@bckash.test", directorInitiatorPassword);
 
-        var newHireResponse = await directorInitiatorClient.PostAsJsonAsync("/api/users", new CreateUserRequest(
+        var newHireResponse = await directorInitiatorClient.PostAsJsonAsync("/api/v1/users", new CreateUserRequest(
             "new-hire@bckash.test", "New", "Hire", null, null, UserTypeSlugs.Director, UserClass.Initiator, null, null, null));
         Assert.True(newHireResponse.IsSuccessStatusCode);
         var newHire = await newHireResponse.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
@@ -65,29 +65,29 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
 
         // A newly-initiated (Pending) staff member cannot log in yet.
         var loginBeforeApproval = await factory.CreateClient().PostAsJsonAsync(
-            "/api/auth/login", new LoginRequest("new-hire@bckash.test", ExtractPassword(recordingSender, "new-hire@bckash.test")));
+            "/api/v1/auth/login", new LoginRequest("new-hire@bckash.test", ExtractPassword(recordingSender, "new-hire@bckash.test")));
         Assert.False(loginBeforeApproval.IsSuccessStatusCode);
 
         // --- A controller-Authorizer (different user_type) is rejected. ---
         var controllerAuthorizerClient = await LoginAsync(factory, "controller-authorizer@bckash.test", ExtractPassword(recordingSender, "controller-authorizer@bckash.test"));
-        var rejectedApproval = await controllerAuthorizerClient.PostAsync($"/api/users/{newHire.Id}/approve-onboarding", content: null);
+        var rejectedApproval = await controllerAuthorizerClient.PostAsync($"/api/v1/users/{newHire.Id}/approve-onboarding", content: null);
         Assert.Equal(System.Net.HttpStatusCode.Forbidden, rejectedApproval.StatusCode);
 
         // --- A director-Authorizer (same user_type as the initiator) succeeds. ---
         var directorAuthorizerClient = await LoginAsync(factory, "director-authorizer@bckash.test", ExtractPassword(recordingSender, "director-authorizer@bckash.test"));
-        var approval = await directorAuthorizerClient.PostAsync($"/api/users/{newHire.Id}/approve-onboarding", content: null);
+        var approval = await directorAuthorizerClient.PostAsync($"/api/v1/users/{newHire.Id}/approve-onboarding", content: null);
         Assert.True(approval.IsSuccessStatusCode);
         var approved = await approval.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
         Assert.Equal(UserOnboardingStatus.Approved, approved!.OnboardingStatus);
 
         // The newly-approved staff member can now log in with the password emailed at creation.
         var newHireClient = await LoginAsync(factory, "new-hire@bckash.test", ExtractPassword(recordingSender, "new-hire@bckash.test"));
-        var newHireMe = await newHireClient.GetFromJsonAsync<UserResponse>("/api/users/me", TestJson.Options);
+        var newHireMe = await newHireClient.GetFromJsonAsync<UserResponse>("/api/v1/users/me", TestJson.Options);
         Assert.Equal("new-hire@bckash.test", newHireMe!.Email);
 
         // --- Super admin can assign staff to an office (existing office CRUD + new assign-office action). ---
-        var office = await (await superAdminClient.PostAsJsonAsync("/api/offices", new { Name = "HQ" })).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
-        var assignResponse = await superAdminClient.PostAsJsonAsync($"/api/users/{newHire.Id}/assign-office", new AssignOfficeRequest(office!.Id));
+        var office = await (await superAdminClient.PostAsJsonAsync("/api/v1/offices", new { Name = "HQ" })).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
+        var assignResponse = await superAdminClient.PostAsJsonAsync($"/api/v1/users/{newHire.Id}/assign-office", new AssignOfficeRequest(office!.Id));
         Assert.True(assignResponse.IsSuccessStatusCode);
         var assigned = await assignResponse.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
         Assert.Equal(office.Id, assigned!.OfficeId);
@@ -95,7 +95,7 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
 
     private static async Task<UserResponse> CreateUserAsync(HttpClient actingClient, string email, string userTypeSlug, UserClass userClass)
     {
-        var response = await actingClient.PostAsJsonAsync("/api/users", new CreateUserRequest(
+        var response = await actingClient.PostAsJsonAsync("/api/v1/users", new CreateUserRequest(
             email, "Test", "User", null, null, userTypeSlug, userClass, null, null, null));
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options))!;

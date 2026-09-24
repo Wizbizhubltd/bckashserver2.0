@@ -7,7 +7,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>FR-GL-7 — basic/unstyled at this stage per the phase spec; polish is Phase 8's reporting pass.</summary>
 [ApiController]
-[Route("api/gl/reports")]
+[Route("api/v1/gl/reports")]
 [Authorize]
 public class GlReportsController : ControllerBase
 {

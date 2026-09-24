@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/client-identification-types")]
+[Route("api/v1/client-identification-types")]
 [Authorize]
 public class ClientIdentificationTypesController : ControllerBase
 {

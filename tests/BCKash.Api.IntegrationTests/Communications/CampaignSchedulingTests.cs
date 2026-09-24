@@ -43,7 +43,7 @@ public class CampaignSchedulingTests : IClassFixture<BCKashWebApplicationFactory
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "campaign-scheduling@bckash.test", ["campaigns.manage", "campaigns.run"]);
 
         var dueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1); // already due
-        var created = await (await client.PostAsJsonAsync("/api/campaigns", new SaveCampaignRequest(
+        var created = await (await client.PostAsJsonAsync("/api/v1/campaigns", new SaveCampaignRequest(
             Type: CampaignType.Email, Name: "Monthly Newsletter", Description: null,
             ReportStartDate: dueDate, ReportStartTime: null,
             RecurrenceType: CampaignRecurrenceType.Schedule, RecurFrequency: CampaignRecurFrequency.Months, RecurInterval: "1",
@@ -55,12 +55,12 @@ public class CampaignSchedulingTests : IClassFixture<BCKashWebApplicationFactory
         Assert.Equal(0, created!.NumberOfRuns);
         Assert.Null(created.LastRunDate);
 
-        var runResponse = await client.PostAsync("/api/campaigns/run-due", content: null);
+        var runResponse = await client.PostAsync("/api/v1/campaigns/run-due", content: null);
         Assert.True(runResponse.IsSuccessStatusCode);
         var runResult = await runResponse.Content.ReadFromJsonAsync<RunDueResponse>(TestJson.Options);
         Assert.Equal(1, runResult!.Ran);
 
-        var afterRun = await client.GetFromJsonAsync<CampaignResponse>($"/api/campaigns/{created.Id}", TestJson.Options);
+        var afterRun = await client.GetFromJsonAsync<CampaignResponse>($"/api/v1/campaigns/{created.Id}", TestJson.Options);
         Assert.Equal(1, afterRun!.NumberOfRuns);
         Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow), afterRun.LastRunDate);
         Assert.Equal(1, afterRun.NumberOfRecipients); // the one active client seeded above
@@ -68,7 +68,7 @@ public class CampaignSchedulingTests : IClassFixture<BCKashWebApplicationFactory
         Assert.True(afterRun.Sent);
 
         // Running again immediately does nothing further — nothing else is due yet.
-        var secondRun = await (await client.PostAsync("/api/campaigns/run-due", content: null)).Content.ReadFromJsonAsync<RunDueResponse>(TestJson.Options);
+        var secondRun = await (await client.PostAsync("/api/v1/campaigns/run-due", content: null)).Content.ReadFromJsonAsync<RunDueResponse>(TestJson.Options);
         Assert.Equal(0, secondRun!.Ran);
     }
 

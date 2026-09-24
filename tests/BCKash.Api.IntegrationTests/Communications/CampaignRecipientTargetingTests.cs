@@ -116,7 +116,7 @@ public class CampaignRecipientTargetingTests : IClassFixture<BCKashWebApplicatio
             EmailAttachmentFileFormat: null, RecipientsCategory: category, ReportAttachment: null, FromDay: null, ToDay: null,
             OfficeId: null, LoanOfficerId: null, LoanStatus: null, LoanProductId: null, Active: true);
 
-        var response = await client.PostAsJsonAsync("/api/campaigns/preview-recipients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/campaigns/preview-recipients", request);
         var recipients = await response.Content.ReadFromJsonAsync<List<CampaignRecipientResponse>>(TestJson.Options);
         return recipients!.Select(r => r.ClientId).ToList();
     }

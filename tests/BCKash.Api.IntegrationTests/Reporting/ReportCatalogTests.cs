@@ -63,8 +63,13 @@ public class ReportCatalogTests : IClassFixture<BCKashWebApplicationFactory>
 
             var loan = new Loan
             {
-                OfficeId = office.Id, ClientId = seedClient.Id, LoanProductId = loanProduct.Id, AccountNumber = loanAccountNumber,
-                Status = LoanStatus.Disbursed, ApprovedAmount = 10_000m, DisbursementDate = today,
+                OfficeId = office.Id,
+                ClientId = seedClient.Id,
+                LoanProductId = loanProduct.Id,
+                AccountNumber = loanAccountNumber,
+                Status = LoanStatus.Disbursed,
+                ApprovedAmount = 10_000m,
+                DisbursementDate = today,
             };
             db.Loans.Add(loan);
             await db.SaveChangesAsync();
@@ -75,8 +80,13 @@ public class ReportCatalogTests : IClassFixture<BCKashWebApplicationFactory>
 
             db.LoanTransactions.Add(new BCKash.Domain.Loans.LoanTransaction
             {
-                LoanId = loan.Id, ClientId = seedClient.Id, TransactionType = LoanTransactionType.Repayment,
-                Amount = 500m, Principal = 400m, Interest = 100m, Date = today,
+                LoanId = loan.Id,
+                ClientId = seedClient.Id,
+                TransactionType = LoanTransactionType.Repayment,
+                Amount = 500m,
+                Principal = 400m,
+                Interest = 100m,
+                Date = today,
             });
 
             db.LoanProvisioningCriteria.Add(new LoanProvisioningCriteria { Name = "30+ days", Min = 30, Max = 90, Percentage = 10, Active = true });
@@ -92,15 +102,23 @@ public class ReportCatalogTests : IClassFixture<BCKashWebApplicationFactory>
 
             var savingsAccount = new SavingsAccount
             {
-                ClientId = seedClient.Id, OfficeId = office.Id, SavingsProductId = savingsProduct.Id,
-                AccountNumber = "SV-RPT-001", Status = SavingsAccountStatus.Approved, Balance = 1_000m,
+                ClientId = seedClient.Id,
+                OfficeId = office.Id,
+                SavingsProductId = savingsProduct.Id,
+                AccountNumber = "SV-RPT-001",
+                Status = SavingsAccountStatus.Approved,
+                Balance = 1_000m,
             };
             db.Savings.Add(savingsAccount);
             await db.SaveChangesAsync();
 
             db.SavingsTransactions.Add(new SavingsTransaction
             {
-                SavingsId = savingsAccount.Id, TransactionType = SavingsTransactionType.Deposit, Amount = 1_000m, Balance = 1_000m, Date = today,
+                SavingsId = savingsAccount.Id,
+                TransactionType = SavingsTransactionType.Deposit,
+                Amount = 1_000m,
+                Balance = 1_000m,
+                Date = today,
             });
 
             await db.SaveChangesAsync();
@@ -108,7 +126,7 @@ public class ReportCatalogTests : IClassFixture<BCKashWebApplicationFactory>
 
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "report-catalog@bckash.test", "reports.view");
 
-        var catalog = await client.GetFromJsonAsync<List<ReportCatalogEntryResponse>>("/api/reports/catalog", TestJson.Options);
+        var catalog = await client.GetFromJsonAsync<List<ReportCatalogEntryResponse>>("/api/v1/reports/catalog", TestJson.Options);
         Assert.Equal(29, catalog!.Count);
         Assert.Equal(Enum.GetValues<ScheduledReportName>().Length, catalog.Count);
 
@@ -116,7 +134,7 @@ public class ReportCatalogTests : IClassFixture<BCKashWebApplicationFactory>
         // and every row exactly as wide as the header).
         foreach (var entry in catalog)
         {
-            var response = await client.GetAsync($"/api/reports/{entry.Name}");
+            var response = await client.GetAsync($"/api/v1/reports/{entry.Name}");
             var body = await response.Content.ReadAsStringAsync();
             Assert.True(response.IsSuccessStatusCode, $"{entry.Name} failed: {response.StatusCode}: {body}");
 
@@ -127,40 +145,40 @@ public class ReportCatalogTests : IClassFixture<BCKashWebApplicationFactory>
         }
 
         // Targeted reconciliation checks against the seeded data.
-        var trialBalance = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.TrialBalance}", TestJson.Options);
+        var trialBalance = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.TrialBalance}", TestJson.Options);
         var debitTotal = trialBalance!.Rows.Sum(r => decimal.Parse(r[3]!));
         var creditTotal = trialBalance.Rows.Sum(r => decimal.Parse(r[4]!));
         Assert.Equal(debitTotal, creditTotal);
 
-        var disbursed = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.DisbursedLoansReport}", TestJson.Options);
+        var disbursed = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.DisbursedLoansReport}", TestJson.Options);
         Assert.Contains(disbursed!.Rows, r => r[0] == loanAccountNumber && r[3] == "10000.00");
 
-        var clientNumbers = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.ClientNumbersReport}", TestJson.Options);
+        var clientNumbers = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.ClientNumbersReport}", TestJson.Options);
         Assert.Contains(clientNumbers!.Rows, r => r[1] == "1" && r[2] == "1"); // Total=1, Active=1
 
-        var arrears = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.ArrearsReport}", TestJson.Options);
+        var arrears = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.ArrearsReport}", TestJson.Options);
         Assert.Contains(arrears!.Rows, r => r[0] == loanAccountNumber);
 
-        var provisioning = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.Provisioning}", TestJson.Options);
+        var provisioning = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.Provisioning}", TestJson.Options);
         Assert.Contains(provisioning!.Rows, r => r[0] == "30+ days" && decimal.Parse(r[4]!) > 0);
 
-        var repayments = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.RepaymentsReport}", TestJson.Options);
+        var repayments = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.RepaymentsReport}", TestJson.Options);
         Assert.Contains(repayments!.Rows, r => r[0] == loanAccountNumber && r[6] == "500.00");
 
-        var savingsAccountReport = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.SavingsAccountReport}", TestJson.Options);
+        var savingsAccountReport = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.SavingsAccountReport}", TestJson.Options);
         Assert.Contains(savingsAccountReport!.Rows, r => r[0] == "SV-RPT-001" && r[4] == "1000.00");
 
-        var groupReport = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.GroupReport}", TestJson.Options);
+        var groupReport = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.GroupReport}", TestJson.Options);
         Assert.Contains(groupReport!.Rows, r => r[0] == "GR-RPT-001" && r[4] == "1");
 
         // Fixed term maturity has no backing data in this schema — legitimately empty, not an error.
-        var fixedTerm = await client.GetFromJsonAsync<ReportResultResponse>($"/api/reports/{ScheduledReportName.FixedTermMaturityReport}", TestJson.Options);
+        var fixedTerm = await client.GetFromJsonAsync<ReportResultResponse>($"/api/v1/reports/{ScheduledReportName.FixedTermMaturityReport}", TestJson.Options);
         Assert.Empty(fixedTerm!.Rows);
 
         // Every PDF/CSV/XLS export completes without error for a representative report.
         foreach (var format in Enum.GetValues<ReportSchedulerFileFormat>())
         {
-            var response = await client.GetAsync($"/api/reports/{ScheduledReportName.TrialBalance}?format={format}");
+            var response = await client.GetAsync($"/api/v1/reports/{ScheduledReportName.TrialBalance}?format={format}");
             Assert.True(response.IsSuccessStatusCode);
             var bytes = await response.Content.ReadAsByteArrayAsync();
             Assert.NotEmpty(bytes);

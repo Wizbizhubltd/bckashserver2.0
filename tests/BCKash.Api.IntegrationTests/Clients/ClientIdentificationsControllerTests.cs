@@ -21,7 +21,7 @@ public class ClientIdentificationsControllerTests : IClassFixture<BCKashWebAppli
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -32,21 +32,21 @@ public class ClientIdentificationsControllerTests : IClassFixture<BCKashWebAppli
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "identification-crud@bckash.test", "clients.manage");
         var clientId = await CreateClientAsync(client, "Ident");
 
-        var createResponse = await client.PostAsJsonAsync($"/api/clients/{clientId}/identifications",
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/clients/{clientId}/identifications",
             new SaveClientIdentificationRequest(null, "A1234567", true, "Passport"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<ClientIdentificationResponse>(TestJson.Options);
 
-        var listResponse = await client.GetFromJsonAsync<List<ClientIdentificationResponse>>($"/api/clients/{clientId}/identifications", TestJson.Options);
+        var listResponse = await client.GetFromJsonAsync<List<ClientIdentificationResponse>>($"/api/v1/clients/{clientId}/identifications", TestJson.Options);
         Assert.Single(listResponse!);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/clients/{clientId}/identifications/{created!.Id}",
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/clients/{clientId}/identifications/{created!.Id}",
             new SaveClientIdentificationRequest(null, "A1234567", false, "Deactivated"));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         var updated = await updateResponse.Content.ReadFromJsonAsync<ClientIdentificationResponse>(TestJson.Options);
         Assert.False(updated!.Active);
 
-        var deleteResponse = await client.DeleteAsync($"/api/clients/{clientId}/identifications/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/clients/{clientId}/identifications/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 
@@ -55,7 +55,7 @@ public class ClientIdentificationsControllerTests : IClassFixture<BCKashWebAppli
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "identification-404@bckash.test", "clients.manage");
 
-        var response = await client.GetAsync("/api/clients/999999/identifications");
+        var response = await client.GetAsync("/api/v1/clients/999999/identifications");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -68,7 +68,7 @@ public class ClientIdentificationsControllerTests : IClassFixture<BCKashWebAppli
 
         var readOnly = await AuthenticatedClientFactory.CreateAsync(_factory, "identification-perm@bckash.test", "some.other.permission");
 
-        var response = await readOnly.PostAsJsonAsync($"/api/clients/{clientId}/identifications", new SaveClientIdentificationRequest(null, "X", true, null));
+        var response = await readOnly.PostAsJsonAsync($"/api/v1/clients/{clientId}/identifications", new SaveClientIdentificationRequest(null, "X", true, null));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

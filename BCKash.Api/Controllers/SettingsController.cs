@@ -15,7 +15,7 @@ namespace BCKash.Api.Controllers;
 /// by later phases as they need it.
 /// </summary>
 [ApiController]
-[Route("api/settings")]
+[Route("api/v1/settings")]
 [Authorize]
 public class SettingsController : ControllerBase
 {

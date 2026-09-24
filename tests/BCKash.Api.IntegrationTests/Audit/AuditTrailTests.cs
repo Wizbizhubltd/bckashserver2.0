@@ -32,11 +32,11 @@ public class AuditTrailTests : IClassFixture<BCKashWebApplicationFactory>
         var tokens = await LoginTestHelper.LoginAndVerifyOtpAsync(_factory, client, user.Email, "Correct-Password1!");
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
 
-        var createResponse = await client.PostAsJsonAsync("/api/settings", new CreateSettingRequest("audit.test.key", "v1"));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/settings", new CreateSettingRequest("audit.test.key", "v1"));
         var created = await createResponse.Content.ReadFromJsonAsync<SettingResponse>();
 
-        await client.PutAsJsonAsync($"/api/settings/{created!.Id}", new UpdateSettingRequest("v2"));
-        await client.DeleteAsync($"/api/settings/{created.Id}");
+        await client.PutAsJsonAsync($"/api/v1/settings/{created!.Id}", new UpdateSettingRequest("v2"));
+        await client.DeleteAsync($"/api/v1/settings/{created.Id}");
 
         using var assertScope = _factory.Services.CreateScope();
         var db = assertScope.ServiceProvider.GetRequiredService<BCKashDbContext>();

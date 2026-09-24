@@ -35,18 +35,18 @@ public class SavingsChargesControllerTests : IClassFixture<BCKashWebApplicationF
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
 
     private static async Task<SavingsAccountResponse> OpenAndApproveAsync(HttpClient client, string label, decimal openingBalance)
     {
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", ProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         var clientId = await CreateClientAsync(client, label);
-        var account = await (await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
+        var account = await (await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
-        var approved = await (await client.PostAsJsonAsync($"/api/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(openingBalance, null, new DateOnly(2026, 1, 1), null)))
+        var approved = await (await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(openingBalance, null, new DateOnly(2026, 1, 1), null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
         return approved!;
     }
@@ -57,16 +57,16 @@ public class SavingsChargesControllerTests : IClassFixture<BCKashWebApplicationF
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-charge-pay@bckash.test", AllPermissions);
         var account = await OpenAndApproveAsync(client, "ChargePay", 1000m);
 
-        var attachResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/charges", new AttachSavingsChargeRequest(SavingsChargeType.AnnualFee, false, 50m, new DateOnly(2026, 2, 1)));
+        var attachResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/charges", new AttachSavingsChargeRequest(SavingsChargeType.AnnualFee, false, 50m, new DateOnly(2026, 2, 1)));
         Assert.Equal(HttpStatusCode.Created, attachResponse.StatusCode);
         var charge = await attachResponse.Content.ReadFromJsonAsync<SavingsChargeResponse>(TestJson.Options);
 
-        var payResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/charges/{charge!.Id}/pay", new DateOnly(2026, 2, 1));
+        var payResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/charges/{charge!.Id}/pay", new DateOnly(2026, 2, 1));
         Assert.Equal(HttpStatusCode.OK, payResponse.StatusCode);
         var paid = await payResponse.Content.ReadFromJsonAsync<SavingsChargeResponse>(TestJson.Options);
         Assert.Equal(50m, paid!.AmountPaid);
 
-        var updated = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{account.Id}", TestJson.Options);
+        var updated = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{account.Id}", TestJson.Options);
         Assert.Equal(950m, updated!.Balance);
     }
 
@@ -76,13 +76,13 @@ public class SavingsChargesControllerTests : IClassFixture<BCKashWebApplicationF
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-charge-waive@bckash.test", AllPermissions);
         var account = await OpenAndApproveAsync(client, "ChargeWaive", 1000m);
 
-        var charge = await (await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/charges", new AttachSavingsChargeRequest(SavingsChargeType.MonthlyFee, false, 20m, null)))
+        var charge = await (await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/charges", new AttachSavingsChargeRequest(SavingsChargeType.MonthlyFee, false, 20m, null)))
             .Content.ReadFromJsonAsync<SavingsChargeResponse>(TestJson.Options);
 
-        var waiveResponse = await client.PostAsync($"/api/savings-accounts/{account.Id}/charges/{charge!.Id}/waive", null);
+        var waiveResponse = await client.PostAsync($"/api/v1/savings-accounts/{account.Id}/charges/{charge!.Id}/waive", null);
         Assert.Equal(HttpStatusCode.OK, waiveResponse.StatusCode);
 
-        var payResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/charges/{charge.Id}/pay", (DateOnly?)null);
+        var payResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/charges/{charge.Id}/pay", (DateOnly?)null);
         Assert.Equal(HttpStatusCode.Conflict, payResponse.StatusCode);
     }
 }

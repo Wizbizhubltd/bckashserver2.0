@@ -31,7 +31,7 @@ public class DocumentsControllerTests : IClassFixture<BCKashWebApplicationFactor
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -51,7 +51,7 @@ public class DocumentsControllerTests : IClassFixture<BCKashWebApplicationFactor
         form.Add(fileContent, "file", fileName);
         form.Add(new StringContent("KYC document"), "notes");
 
-        var uploadResponse = await client.PostAsync($"/api/clients/{clientId}/documents", form);
+        var uploadResponse = await client.PostAsync($"/api/v1/clients/{clientId}/documents", form);
         Assert.Equal(HttpStatusCode.Created, uploadResponse.StatusCode);
         var uploaded = await uploadResponse.Content.ReadFromJsonAsync<DocumentResponse>(TestJson.Options);
         Assert.Equal(fileName, uploaded!.Name);
@@ -59,10 +59,10 @@ public class DocumentsControllerTests : IClassFixture<BCKashWebApplicationFactor
         Assert.Equal(ReferenceEntityType.Client, uploaded.Type);
         Assert.Equal(clientId, uploaded.RecordId);
 
-        var listResponse = await client.GetFromJsonAsync<List<DocumentResponse>>($"/api/clients/{clientId}/documents", TestJson.Options);
+        var listResponse = await client.GetFromJsonAsync<List<DocumentResponse>>($"/api/v1/clients/{clientId}/documents", TestJson.Options);
         Assert.Single(listResponse!);
 
-        var downloadResponse = await client.GetAsync($"/api/clients/{clientId}/documents/{uploaded.Id}/download");
+        var downloadResponse = await client.GetAsync($"/api/v1/clients/{clientId}/documents/{uploaded.Id}/download");
         Assert.Equal(HttpStatusCode.OK, downloadResponse.StatusCode);
         Assert.Equal(expectedContentType, downloadResponse.Content.Headers.ContentType?.MediaType);
         var downloadedBytes = await downloadResponse.Content.ReadAsByteArrayAsync();
@@ -79,12 +79,12 @@ public class DocumentsControllerTests : IClassFixture<BCKashWebApplicationFactor
         var absolutePath = Path.Combine(AppContext.BaseDirectory, storageSettings.RootPath, location.Replace('/', Path.DirectorySeparatorChar));
         Assert.True(File.Exists(absolutePath));
 
-        var deleteResponse = await client.DeleteAsync($"/api/clients/{clientId}/documents/{uploaded.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/clients/{clientId}/documents/{uploaded.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
         Assert.False(File.Exists(absolutePath));
 
-        var afterDeleteResponse = await client.GetAsync($"/api/clients/{clientId}/documents/{uploaded.Id}/download");
+        var afterDeleteResponse = await client.GetAsync($"/api/v1/clients/{clientId}/documents/{uploaded.Id}/download");
         Assert.Equal(HttpStatusCode.NotFound, afterDeleteResponse.StatusCode);
     }
 
@@ -93,7 +93,7 @@ public class DocumentsControllerTests : IClassFixture<BCKashWebApplicationFactor
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "document-404@bckash.test", "clients.manage");
 
-        var response = await client.GetAsync("/api/clients/999999/documents");
+        var response = await client.GetAsync("/api/v1/clients/999999/documents");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

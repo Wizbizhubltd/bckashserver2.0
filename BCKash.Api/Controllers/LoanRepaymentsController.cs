@@ -10,7 +10,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>FR-LN-16 (record/allocate) and FR-LN-18 (reversal).</summary>
 [ApiController]
-[Route("api/loans/{loanId:int}/repayments")]
+[Route("api/v1/loans/{loanId:int}/repayments")]
 [Authorize]
 public class LoanRepaymentsController : ControllerBase
 {

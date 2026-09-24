@@ -11,7 +11,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>User-facing reminders (BR-COM-5, FR-COM-4) — always scoped to the current user; no permission gate beyond being authenticated.</summary>
 [ApiController]
-[Route("api/reminders")]
+[Route("api/v1/reminders")]
 [Authorize]
 public class RemindersController : ControllerBase
 {

@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/gl/office-transfers")]
+[Route("api/v1/gl/office-transfers")]
 [Authorize]
 public class OfficeTransfersController : ControllerBase
 {

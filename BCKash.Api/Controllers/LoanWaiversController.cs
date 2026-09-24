@@ -9,7 +9,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>FR-LN-20: waive interest or a specific charge component on one of the loan's schedule lines.</summary>
 [ApiController]
-[Route("api/loans/{loanId:int}/waivers")]
+[Route("api/v1/loans/{loanId:int}/waivers")]
 [Authorize]
 public class LoanWaiversController : ControllerBase
 {

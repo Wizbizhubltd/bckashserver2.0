@@ -36,17 +36,17 @@ public class OfficeTransfersControllerTests : IClassFixture<BCKashWebApplication
             toOfficeId = to.Id;
         }
 
-        var cashAccount = await (await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Cash in Transit", null, "1900", GlAccountType.Asset, true, null)))
+        var cashAccount = await (await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Cash in Transit", null, "1900", GlAccountType.Asset, true, null)))
             .Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
 
-        var response = await client.PostAsJsonAsync("/api/gl/office-transfers", new CreateOfficeTransferRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/gl/office-transfers", new CreateOfficeTransferRequest(
             fromOfficeId, toOfficeId, null, 2500m, cashAccount!.Id, new DateOnly(2026, 1, 10), "Branch funding"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var transfer = await response.Content.ReadFromJsonAsync<OfficeTransactionResponse>(TestJson.Options);
         Assert.Equal(2500m, transfer!.Amount);
 
-        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?reference=TRANSFER-{transfer.Id}", TestJson.Options);
+        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?reference=TRANSFER-{transfer.Id}", TestJson.Options);
         Assert.Equal(2, entries!.Count);
         Assert.Equal(entries.Sum(e => e.Debit ?? 0m), entries.Sum(e => e.Credit ?? 0m));
         Assert.Contains(entries, e => e.OfficeId == fromOfficeId && e.Credit == 2500m);
@@ -68,10 +68,10 @@ public class OfficeTransfersControllerTests : IClassFixture<BCKashWebApplication
             officeId = office.Id;
         }
 
-        var cashAccount = await (await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Cash", null, "1000", GlAccountType.Asset, true, null)))
+        var cashAccount = await (await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Cash", null, "1000", GlAccountType.Asset, true, null)))
             .Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
 
-        var response = await client.PostAsJsonAsync("/api/gl/office-transfers", new CreateOfficeTransferRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/gl/office-transfers", new CreateOfficeTransferRequest(
             officeId, officeId, null, 100m, cashAccount!.Id, new DateOnly(2026, 1, 10), null));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

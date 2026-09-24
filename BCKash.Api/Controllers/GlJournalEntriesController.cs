@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/gl/journal-entries")]
+[Route("api/v1/gl/journal-entries")]
 [Authorize]
 public class GlJournalEntriesController : ControllerBase
 {

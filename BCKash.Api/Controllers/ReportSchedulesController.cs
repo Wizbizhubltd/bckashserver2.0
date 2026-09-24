@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/report-schedules")]
+[Route("api/v1/report-schedules")]
 [Authorize]
 public class ReportSchedulesController : ControllerBase
 {

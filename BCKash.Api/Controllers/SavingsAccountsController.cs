@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/savings-accounts")]
+[Route("api/v1/savings-accounts")]
 [Authorize]
 public class SavingsAccountsController : ControllerBase
 {

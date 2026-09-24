@@ -27,7 +27,7 @@ public class TwoFactorTests : IClassFixture<BCKashWebApplicationFactory>
 
         using var client = _factory.CreateClient();
 
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("2fa-user@bckash.test", "Correct-Password1!"));
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("2fa-user@bckash.test", "Correct-Password1!"));
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
 
         var challenge = await loginResponse.Content.ReadFromJsonAsync<TwoFactorChallengeResponse>();
@@ -35,7 +35,7 @@ public class TwoFactorTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.False(string.IsNullOrWhiteSpace(challenge!.ChallengeToken));
 
         var validCode = new Totp(Base32Encoding.ToBytes(Secret)).ComputeTotp();
-        var verifyResponse = await client.PostAsJsonAsync("/api/auth/login/2fa", new TwoFactorRequest(challenge.ChallengeToken, validCode));
+        var verifyResponse = await client.PostAsJsonAsync("/api/v1/auth/login/2fa", new TwoFactorRequest(challenge.ChallengeToken, validCode));
 
         Assert.Equal(HttpStatusCode.OK, verifyResponse.StatusCode);
         var tokens = await verifyResponse.Content.ReadFromJsonAsync<TokenResponse>();
@@ -51,10 +51,10 @@ public class TwoFactorTests : IClassFixture<BCKashWebApplicationFactory>
 
         using var client = _factory.CreateClient();
 
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("2fa-wrong-code@bckash.test", "Correct-Password1!"));
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("2fa-wrong-code@bckash.test", "Correct-Password1!"));
         var challenge = await loginResponse.Content.ReadFromJsonAsync<TwoFactorChallengeResponse>();
 
-        var verifyResponse = await client.PostAsJsonAsync("/api/auth/login/2fa", new TwoFactorRequest(challenge!.ChallengeToken, "000000"));
+        var verifyResponse = await client.PostAsJsonAsync("/api/v1/auth/login/2fa", new TwoFactorRequest(challenge!.ChallengeToken, "000000"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, verifyResponse.StatusCode);
     }

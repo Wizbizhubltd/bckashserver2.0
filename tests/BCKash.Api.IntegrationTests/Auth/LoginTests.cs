@@ -27,7 +27,7 @@ public class LoginTests : IClassFixture<BCKashWebApplicationFactory>
         await TestDataSeeder.SeedUserAsync(db, "login-success@bckash.test", "Correct-Password1!");
 
         using var client = _factory.CreateClient();
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("login-success@bckash.test", "Correct-Password1!"));
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("login-success@bckash.test", "Correct-Password1!"));
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
 
         var challenge = await loginResponse.Content.ReadFromJsonAsync<OtpChallengeResponse>();
@@ -39,7 +39,7 @@ public class LoginTests : IClassFixture<BCKashWebApplicationFactory>
         var code = Regex.Match(otpEmail.Body, @"verification code is (\d{6})").Groups[1].Value;
         Assert.False(string.IsNullOrWhiteSpace(code));
 
-        var verifyResponse = await client.PostAsJsonAsync("/api/auth/login/otp/verify", new OtpVerifyRequest(challenge.ChallengeToken, code));
+        var verifyResponse = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(challenge.ChallengeToken, code));
         Assert.Equal(HttpStatusCode.OK, verifyResponse.StatusCode);
 
         var body = await verifyResponse.Content.ReadFromJsonAsync<OtpVerifyResponse>();
@@ -65,7 +65,7 @@ public class LoginTests : IClassFixture<BCKashWebApplicationFactory>
         await TestDataSeeder.SeedUserAsync(db, "login-wrong-pw@bckash.test", "Correct-Password1!");
 
         using var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("login-wrong-pw@bckash.test", "wrong-password"));
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("login-wrong-pw@bckash.test", "wrong-password"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -78,10 +78,10 @@ public class LoginTests : IClassFixture<BCKashWebApplicationFactory>
         await TestDataSeeder.SeedUserAsync(db, "login-wrong-otp@bckash.test", "Correct-Password1!");
 
         using var client = _factory.CreateClient();
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("login-wrong-otp@bckash.test", "Correct-Password1!"));
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("login-wrong-otp@bckash.test", "Correct-Password1!"));
         var challenge = await loginResponse.Content.ReadFromJsonAsync<OtpChallengeResponse>();
 
-        var verifyResponse = await client.PostAsJsonAsync("/api/auth/login/otp/verify", new OtpVerifyRequest(challenge!.ChallengeToken, "000000"));
+        var verifyResponse = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(challenge!.ChallengeToken, "000000"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, verifyResponse.StatusCode);
     }
@@ -96,7 +96,7 @@ public class LoginTests : IClassFixture<BCKashWebApplicationFactory>
         using var client = _factory.CreateClient();
         var tokens = await LoginTestHelper.LoginAndVerifyOtpAsync(_factory, client, "login-refresh@bckash.test", "Correct-Password1!");
 
-        var refreshResponse = await client.PostAsJsonAsync("/api/auth/refresh", new RefreshRequest(tokens.RefreshToken));
+        var refreshResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest(tokens.RefreshToken));
         Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
 
         var refreshed = await refreshResponse.Content.ReadFromJsonAsync<TokenResponse>();
@@ -107,7 +107,7 @@ public class LoginTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.NotEqual(tokens.RefreshToken, refreshed!.RefreshToken);
 
         // Rotated: the old refresh token must not be usable a second time.
-        var reuseResponse = await client.PostAsJsonAsync("/api/auth/refresh", new RefreshRequest(tokens.RefreshToken));
+        var reuseResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest(tokens.RefreshToken));
         Assert.Equal(HttpStatusCode.Unauthorized, reuseResponse.StatusCode);
     }
 }

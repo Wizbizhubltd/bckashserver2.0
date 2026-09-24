@@ -16,7 +16,7 @@ namespace BCKash.Api.Controllers;
 /// FR-LN-15 (see LoanChargeResponse's doc comment).
 /// </summary>
 [ApiController]
-[Route("api/loans/{loanId:int}/charges")]
+[Route("api/v1/loans/{loanId:int}/charges")]
 [Authorize]
 public class LoanChargesController : ControllerBase
 {

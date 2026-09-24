@@ -25,7 +25,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-crud@bckash.test", "organization.manage");
 
-        var response = await client.PostAsJsonAsync("/api/offices", new SaveOfficeRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest(
             "Head Office", null, null, null, null, null, null, null, null, true));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -38,14 +38,14 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-cycle@bckash.test", "organization.manage");
 
-        var parentResponse = await client.PostAsJsonAsync("/api/offices", new SaveOfficeRequest("Parent", null, null, null, null, null, null, null, null, false));
+        var parentResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Parent", null, null, null, null, null, null, null, null, false));
         var parent = await parentResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
-        var childResponse = await client.PostAsJsonAsync("/api/offices", new SaveOfficeRequest("Child", parent!.Id, null, null, null, null, null, null, null, false));
+        var childResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Child", parent!.Id, null, null, null, null, null, null, null, false));
         var child = await childResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         // Try to make Parent a child of its own child — a direct cycle.
-        var cycleResponse = await client.PutAsJsonAsync($"/api/offices/{parent.Id}",
+        var cycleResponse = await client.PutAsJsonAsync($"/api/v1/offices/{parent.Id}",
             new SaveOfficeRequest("Parent", child!.Id, null, null, null, null, null, null, null, false));
 
         Assert.Equal(HttpStatusCode.BadRequest, cycleResponse.StatusCode);
@@ -56,7 +56,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-deactivate@bckash.test", "organization.manage");
 
-        var officeResponse = await client.PostAsJsonAsync("/api/offices", new SaveOfficeRequest("Busy Branch", null, null, null, null, null, null, null, null, false));
+        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Busy Branch", null, null, null, null, null, null, null, null, false));
         var office = await officeResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         using (var scope = _factory.Services.CreateScope())
@@ -67,13 +67,13 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
         }
 
         // Without confirm — blocked with counts.
-        var blockedResponse = await client.PostAsync($"/api/offices/{office!.Id}/deactivate", null);
+        var blockedResponse = await client.PostAsync($"/api/v1/offices/{office!.Id}/deactivate", null);
         Assert.Equal(HttpStatusCode.Conflict, blockedResponse.StatusCode);
         var counts = await blockedResponse.Content.ReadFromJsonAsync<OfficeInUseResponse>();
         Assert.Equal(1, counts!.ActiveClientCount);
 
         // With confirm=true — succeeds and is audited.
-        var confirmedResponse = await client.PostAsync($"/api/offices/{office.Id}/deactivate?confirm=true", null);
+        var confirmedResponse = await client.PostAsync($"/api/v1/offices/{office.Id}/deactivate?confirm=true", null);
         Assert.Equal(HttpStatusCode.OK, confirmedResponse.StatusCode);
         var deactivated = await confirmedResponse.Content.ReadFromJsonAsync<OfficeResponse>();
         Assert.False(deactivated!.Active);
@@ -92,7 +92,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-deactivate-loan@bckash.test", "organization.manage");
 
-        var officeResponse = await client.PostAsJsonAsync("/api/offices", new SaveOfficeRequest("Loan Branch", null, null, null, null, null, null, null, null, false));
+        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Loan Branch", null, null, null, null, null, null, null, null, false));
         var office = await officeResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         using (var scope = _factory.Services.CreateScope())
@@ -102,7 +102,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
             await db.SaveChangesAsync();
         }
 
-        var blockedResponse = await client.PostAsync($"/api/offices/{office!.Id}/deactivate", null);
+        var blockedResponse = await client.PostAsync($"/api/v1/offices/{office!.Id}/deactivate", null);
         Assert.Equal(HttpStatusCode.Conflict, blockedResponse.StatusCode);
         var counts = await blockedResponse.Content.ReadFromJsonAsync<OfficeInUseResponse>();
         Assert.Equal(1, counts!.OpenLoanCount);
@@ -113,10 +113,10 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-deactivate-empty@bckash.test", "organization.manage");
 
-        var officeResponse = await client.PostAsJsonAsync("/api/offices", new SaveOfficeRequest("Quiet Branch", null, null, null, null, null, null, null, null, false));
+        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Quiet Branch", null, null, null, null, null, null, null, null, false));
         var office = await officeResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
-        var response = await client.PostAsync($"/api/offices/{office!.Id}/deactivate", null);
+        var response = await client.PostAsync($"/api/v1/offices/{office!.Id}/deactivate", null);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

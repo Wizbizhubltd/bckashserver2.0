@@ -18,7 +18,7 @@ public static class LoginTestHelper
 {
     public static async Task<OtpVerifyResponse> LoginAndVerifyOtpAsync(WebApplicationFactory<Program> factory, HttpClient client, string email, string password)
     {
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(email, password));
         Assert.True(loginResponse.IsSuccessStatusCode, await loginResponse.Content.ReadAsStringAsync());
         var challenge = await loginResponse.Content.ReadFromJsonAsync<OtpChallengeResponse>();
 
@@ -26,7 +26,7 @@ public static class LoginTestHelper
         var otpEmail = emailSender.Sent.Last(e => e.ToAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
         var code = Regex.Match(otpEmail.Body, @"verification code is (\d{6})").Groups[1].Value;
 
-        var verifyResponse = await client.PostAsJsonAsync("/api/auth/login/otp/verify", new OtpVerifyRequest(challenge!.ChallengeToken, code));
+        var verifyResponse = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(challenge!.ChallengeToken, code));
         Assert.True(verifyResponse.IsSuccessStatusCode, await verifyResponse.Content.ReadAsStringAsync());
         return (await verifyResponse.Content.ReadFromJsonAsync<OtpVerifyResponse>())!;
     }

@@ -34,7 +34,7 @@ public class ReportSchedulingTests : IClassFixture<BCKashWebApplicationFactory>
         var beforeCount = recordingSender.Sent.Count;
 
         var recipientAddress = $"finance-{format}@bckash.test";
-        var created = await (await client.PostAsJsonAsync("/api/report-schedules", new SaveReportScheduleRequest(
+        var created = await (await client.PostAsJsonAsync("/api/v1/report-schedules", new SaveReportScheduleRequest(
             Description: $"Trial balance ({format})", ReportStartDate: null, ReportStartTime: null,
             RecurrenceType: null, RecurFrequency: null, RecurInterval: null,
             EmailRecipients: recipientAddress, EmailSubject: "Trial Balance", EmailMessage: "See attached.",
@@ -43,7 +43,7 @@ public class ReportSchedulingTests : IClassFixture<BCKashWebApplicationFactory>
             OfficeId: null, LoanOfficerId: null, LoanStatus: null, LoanProductId: null, Active: true)))
             .Content.ReadFromJsonAsync<ReportScheduleResponse>(TestJson.Options);
 
-        var runResponse = await client.PostAsync($"/api/report-schedules/{created!.Id}/run", content: null);
+        var runResponse = await client.PostAsync($"/api/v1/report-schedules/{created!.Id}/run", content: null);
         Assert.True(runResponse.IsSuccessStatusCode);
 
         Assert.Equal(beforeCount + 1, recordingSender.Sent.Count);
@@ -57,7 +57,7 @@ public class ReportSchedulingTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.NotEmpty(attachment.Content);
         Assert.Equal($"{ScheduledReportName.TrialBalance}.{ExpectedExtension(format)}", attachment.FileName);
 
-        var afterRun = await client.GetFromJsonAsync<ReportScheduleResponse>($"/api/report-schedules/{created.Id}", TestJson.Options);
+        var afterRun = await client.GetFromJsonAsync<ReportScheduleResponse>($"/api/v1/report-schedules/{created.Id}", TestJson.Options);
         Assert.Equal(1, afterRun!.NumberOfRuns);
         Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow), afterRun.LastRunDate);
     }

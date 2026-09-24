@@ -48,46 +48,46 @@ public class GlReportsControllerTests : IClassFixture<BCKashWebApplicationFactor
             GlAccountReceivableFeeId: null, GlAccountReceivablePenaltyId: null, GlAccountLoanOverPaymentsId: null,
             GlAccountSuspendedIncomeId: null, GlAccountIncomeInterestId: null, GlAccountIncomeFeeId: null,
             GlAccountIncomePenaltyId: null, GlAccountIncomeRecoveryId: null, GlAccountLoansWrittenOffId: writtenOff);
-        var product = await (await client.PostAsJsonAsync("/api/loan-products", productRequest)).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/loan-products", productRequest)).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
 
         var clientRequest = new CreateClientRequest(
             null, null, null, null, null, null, null, "GlReport", null, "Borrower", "GlReport Borrower",
             null, "GlReport Borrower", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var borrower = await (await client.PostAsJsonAsync("/api/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
+        var borrower = await (await client.PostAsJsonAsync("/api/v1/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
 
         var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, borrower!.Id, null, product!.Id, 12000m, 12, FrequencyType.Months, null);
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
-        var approved = await (await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000m, null)))
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var approved = await (await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000m, null)))
             .Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         var loanId = approved!.LoanId!.Value;
 
         // Disbursement posts Debit Portfolio / Credit Fund Source.
-        await client.PostAsJsonAsync($"/api/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000m, null));
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000m, null));
 
         // Write off the entire outstanding schedule — posts Debit Written Off / Credit Portfolio + Receivable Interest.
-        await client.PostAsJsonAsync($"/api/loans/{loanId}/write-off", new WriteOffLoanRequest("Uncollectable", new DateOnly(2026, 6, 1)));
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/write-off", new WriteOffLoanRequest("Uncollectable", new DateOnly(2026, 6, 1)));
 
         // An unrelated, independently-balanced manual entry.
-        var manualResponse = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var manualResponse = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             null, new DateOnly(2026, 6, 2), [new JournalEntryLineRequest(cash, 200m, null), new JournalEntryLineRequest(otherIncome, null, 200m)], "Misc"));
         var manualEntries = await manualResponse.Content.ReadFromJsonAsync<List<GlJournalEntryResponse>>(TestJson.Options);
-        await client.PostAsJsonAsync($"/api/gl/journal-entries/{manualEntries![0].Reference}/approve", new ApproveJournalEntryRequest(null));
+        await client.PostAsJsonAsync($"/api/v1/gl/journal-entries/{manualEntries![0].Reference}/approve", new ApproveJournalEntryRequest(null));
 
-        var trialBalanceResponse = await client.GetFromJsonAsync<List<TrialBalanceRowResponse>>("/api/gl/reports/trial-balance", TestJson.Options);
+        var trialBalanceResponse = await client.GetFromJsonAsync<List<TrialBalanceRowResponse>>("/api/v1/gl/reports/trial-balance", TestJson.Options);
         var trialBalance = trialBalanceResponse!;
         Assert.NotEmpty(trialBalance);
         Assert.Equal(trialBalance.Sum(r => r.TotalDebit), trialBalance.Sum(r => r.TotalCredit));
 
         // The write-off produced a matching, balanced batch traceable back to the loan.
-        var writeOffEntries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?glAccountId={writtenOff}", TestJson.Options);
+        var writeOffEntries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?glAccountId={writtenOff}", TestJson.Options);
         Assert.NotEmpty(writeOffEntries!);
         Assert.All(writeOffEntries!, e => Assert.Equal(loanId, e.LoanId));
     }
 
     private static async Task<int> CreateAccountAsync(HttpClient client, string name, string code, GlAccountType type)
     {
-        var response = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
+        var response = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
         var created = await response.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         return created!.Id;
     }

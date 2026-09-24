@@ -42,45 +42,45 @@ public class Phase8GlPostingEndToEndTests : IClassFixture<BCKashWebApplicationFa
         var payrollExpenseAccount = await CreateAccountAsync(client, "Payroll Expense", "5400", GlAccountType.Expense);
 
         // --- Fixed asset depreciation ---
-        var assetType = await (await client.PostAsJsonAsync("/api/asset-types", new SaveAssetTypeRequest(
+        var assetType = await (await client.PostAsJsonAsync("/api/v1/asset-types", new SaveAssetTypeRequest(
             "Office Equipment", null, null, accumulatedDepreciationAccount, depreciationExpenseAccount, null, null, null)))
             .Content.ReadFromJsonAsync<AssetTypeResponse>(TestJson.Options);
 
-        var asset = await (await client.PostAsJsonAsync("/api/assets", new SaveAssetRequest(
+        var asset = await (await client.PostAsJsonAsync("/api/v1/assets", new SaveAssetRequest(
             assetType!.Id, null, "Laptop", new DateOnly(2024, 1, 1), 12_000m, 5, 2_000m, "SN-001", null, null, "2024")))
             .Content.ReadFromJsonAsync<AssetResponse>(TestJson.Options);
 
-        var depreciationResponse = await client.PostAsJsonAsync($"/api/assets/{asset!.Id}/depreciate", new RunDepreciationRequest("2026"));
+        var depreciationResponse = await client.PostAsJsonAsync($"/api/v1/assets/{asset!.Id}/depreciate", new RunDepreciationRequest("2026"));
         Assert.True(depreciationResponse.IsSuccessStatusCode);
         var depreciation = await depreciationResponse.Content.ReadFromJsonAsync<AssetDepreciationResponse>(TestJson.Options);
         Assert.Equal(2_000m, depreciation!.DepreciationValue); // (12,000 - 2,000) / 5 years
 
         // --- Expense approval ---
-        var expenseType = await (await client.PostAsJsonAsync("/api/expense-types", new SaveExpenseTypeRequest(
+        var expenseType = await (await client.PostAsJsonAsync("/api/v1/expense-types", new SaveExpenseTypeRequest(
             "Office Supplies", cashAccount, operatingExpenseAccount, null)))
             .Content.ReadFromJsonAsync<ExpenseTypeResponse>(TestJson.Options);
 
-        var expense = await (await client.PostAsJsonAsync("/api/expenses", new SaveExpenseRequest(
+        var expense = await (await client.PostAsJsonAsync("/api/v1/expenses", new SaveExpenseRequest(
             null, expenseType!.Id, "Printer paper", 500m, new DateOnly(2026, 1, 5), false, null, null, null, ExpenseRecurType.Month, null, null)))
             .Content.ReadFromJsonAsync<ExpenseResponse>(TestJson.Options);
 
-        var approvedExpenseResponse = await client.PostAsJsonAsync($"/api/expenses/{expense!.Id}/approve", new ApproveRequest(null));
+        var approvedExpenseResponse = await client.PostAsJsonAsync($"/api/v1/expenses/{expense!.Id}/approve", new ApproveRequest(null));
         Assert.True(approvedExpenseResponse.IsSuccessStatusCode);
 
         // --- Other income approval ---
-        var incomeType = await (await client.PostAsJsonAsync("/api/other-income-types", new SaveOtherIncomeTypeRequest(
+        var incomeType = await (await client.PostAsJsonAsync("/api/v1/other-income-types", new SaveOtherIncomeTypeRequest(
             "Asset Sale", cashAccount, otherIncomeAccount, null)))
             .Content.ReadFromJsonAsync<OtherIncomeTypeResponse>(TestJson.Options);
 
-        var income = await (await client.PostAsJsonAsync("/api/other-income", new SaveOtherIncomeRequest(
+        var income = await (await client.PostAsJsonAsync("/api/v1/other-income", new SaveOtherIncomeRequest(
             null, incomeType!.Id, "Sold old chairs", 750m, new DateOnly(2026, 1, 6), null, null)))
             .Content.ReadFromJsonAsync<OtherIncomeResponse>(TestJson.Options);
 
-        var approvedIncomeResponse = await client.PostAsJsonAsync($"/api/other-income/{income!.Id}/approve", new ApproveRequest(null));
+        var approvedIncomeResponse = await client.PostAsJsonAsync($"/api/v1/other-income/{income!.Id}/approve", new ApproveRequest(null));
         Assert.True(approvedIncomeResponse.IsSuccessStatusCode);
 
         // --- Payroll run (no template — gross amount flows straight through as net pay) ---
-        var payrollResponse = await client.PostAsJsonAsync("/api/payroll/runs", new RunPayrollRequest(
+        var payrollResponse = await client.PostAsJsonAsync("/api/v1/payroll/runs", new RunPayrollRequest(
             null, payrollExpenseAccount, cashAccount, null, null, "Jane Doe", null, "bank_transfer", null, null, null, null, null,
             50_000m, new DateOnly(2026, 1, 31), false, null, null, null, PayrollRecurType.Months));
         Assert.True(payrollResponse.IsSuccessStatusCode);
@@ -88,7 +88,7 @@ public class Phase8GlPostingEndToEndTests : IClassFixture<BCKashWebApplicationFa
         Assert.Equal(50_000m, payroll!.PaidAmount); // no template line items -> net pay equals gross
 
         // --- Trial balance nets to zero across all four postings ---
-        var trialBalance = await client.GetFromJsonAsync<List<TrialBalanceRowResponse>>("/api/gl/reports/trial-balance", TestJson.Options);
+        var trialBalance = await client.GetFromJsonAsync<List<TrialBalanceRowResponse>>("/api/v1/gl/reports/trial-balance", TestJson.Options);
         Assert.NotNull(trialBalance);
         Assert.NotEmpty(trialBalance);
         Assert.Equal(trialBalance.Sum(r => r.TotalDebit), trialBalance.Sum(r => r.TotalCredit));
@@ -102,14 +102,14 @@ public class Phase8GlPostingEndToEndTests : IClassFixture<BCKashWebApplicationFa
 
     private static async Task AssertBalancedBatchAsync(HttpClient client, int glAccountId)
     {
-        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?glAccountId={glAccountId}", TestJson.Options);
+        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?glAccountId={glAccountId}", TestJson.Options);
         Assert.NotEmpty(entries!);
         Assert.All(entries!, e => Assert.True(e.Approved && !e.ManualEntry));
     }
 
     private static async Task<int> CreateAccountAsync(HttpClient client, string name, string code, GlAccountType type)
     {
-        var response = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
+        var response = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
         var created = await response.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         return created!.Id;
     }

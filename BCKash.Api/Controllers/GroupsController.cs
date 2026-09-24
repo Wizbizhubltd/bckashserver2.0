@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/groups")]
+[Route("api/v1/groups")]
 [Authorize]
 public class GroupsController : ControllerBase
 {

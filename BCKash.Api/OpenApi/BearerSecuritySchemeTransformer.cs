@@ -27,7 +27,7 @@ internal sealed class BearerSecuritySchemeTransformer(IAuthenticationSchemeProvi
             Type = SecuritySchemeType.Http,
             Scheme = "bearer",
             BearerFormat = "JWT",
-            Description = "JWT access token issued by POST /api/auth/login.",
+            Description = "JWT access token issued by POST /api/v1/auth/login.",
         };
 
         var bearerReference = new OpenApiSecuritySchemeReference("Bearer", document);

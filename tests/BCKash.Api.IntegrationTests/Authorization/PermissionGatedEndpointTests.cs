@@ -30,7 +30,7 @@ public class PermissionGatedEndpointTests : IClassFixture<BCKashWebApplicationFa
         using var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var response = await client.PostAsJsonAsync("/api/settings", new CreateSettingRequest("test.key", "test-value"));
+        var response = await client.PostAsJsonAsync("/api/v1/settings", new CreateSettingRequest("test.key", "test-value"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -43,7 +43,7 @@ public class PermissionGatedEndpointTests : IClassFixture<BCKashWebApplicationFa
         using var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var response = await client.PostAsJsonAsync("/api/settings", new CreateSettingRequest("test.key", "test-value"));
+        var response = await client.PostAsJsonAsync("/api/v1/settings", new CreateSettingRequest("test.key", "test-value"));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -53,7 +53,7 @@ public class PermissionGatedEndpointTests : IClassFixture<BCKashWebApplicationFa
     {
         using var client = _factory.CreateClient();
 
-        var response = await client.GetAsync("/api/settings");
+        var response = await client.GetAsync("/api/v1/settings");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

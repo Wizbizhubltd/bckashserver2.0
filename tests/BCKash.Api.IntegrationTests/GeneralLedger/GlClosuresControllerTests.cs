@@ -19,7 +19,7 @@ public class GlClosuresControllerTests : IClassFixture<BCKashWebApplicationFacto
     }
 
     private static async Task<int> CreateAccountAsync(HttpClient client, string glCode) =>
-        (await (await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest(glCode, null, glCode, GlAccountType.Asset, true, null)))
+        (await (await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest(glCode, null, glCode, GlAccountType.Asset, true, null)))
             .Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options))!.Id;
 
     /// <summary>Each test gets its own office so their closures (scoped per-office, like production) can't interfere with each other via the shared per-class database.</summary>
@@ -41,31 +41,31 @@ public class GlClosuresControllerTests : IClassFixture<BCKashWebApplicationFacto
         var cashId = await CreateAccountAsync(client, "1000");
         var incomeId = await CreateAccountAsync(client, "4000");
 
-        var closeResponse = await client.PostAsJsonAsync("/api/gl/closures", new CreateGlClosureRequest(officeId, new DateOnly(2026, 1, 31), "Month-end close"));
+        var closeResponse = await client.PostAsJsonAsync("/api/v1/gl/closures", new CreateGlClosureRequest(officeId, new DateOnly(2026, 1, 31), "Month-end close"));
         Assert.Equal(HttpStatusCode.OK, closeResponse.StatusCode);
         var closure = await closeResponse.Content.ReadFromJsonAsync<GlClosureResponse>(TestJson.Options);
 
         // A posting dated on/before the closure date is blocked.
-        var blockedResponse = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var blockedResponse = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             officeId, new DateOnly(2026, 1, 20),
             [new JournalEntryLineRequest(cashId, 100m, null), new JournalEntryLineRequest(incomeId, null, 100m)],
             "Backdated"));
         Assert.Equal(HttpStatusCode.Conflict, blockedResponse.StatusCode);
 
         // A posting dated after the closure still succeeds.
-        var allowedResponse = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var allowedResponse = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             officeId, new DateOnly(2026, 2, 5),
             [new JournalEntryLineRequest(cashId, 100m, null), new JournalEntryLineRequest(incomeId, null, 100m)],
             "After close"));
         Assert.Equal(HttpStatusCode.OK, allowedResponse.StatusCode);
 
-        var reopenResponse = await client.PostAsJsonAsync($"/api/gl/closures/{closure!.Id}/reopen", new ReopenGlClosureRequest("Correcting an entry"));
+        var reopenResponse = await client.PostAsJsonAsync($"/api/v1/gl/closures/{closure!.Id}/reopen", new ReopenGlClosureRequest("Correcting an entry"));
         Assert.Equal(HttpStatusCode.OK, reopenResponse.StatusCode);
         var reopened = await reopenResponse.Content.ReadFromJsonAsync<GlClosureResponse>(TestJson.Options);
         Assert.NotNull(reopened!.ReopenedAt);
 
         // Now the previously-blocked backdated posting succeeds.
-        var nowAllowedResponse = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var nowAllowedResponse = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             officeId, new DateOnly(2026, 1, 20),
             [new JournalEntryLineRequest(cashId, 100m, null), new JournalEntryLineRequest(incomeId, null, 100m)],
             "Backdated, now allowed"));
@@ -78,10 +78,10 @@ public class GlClosuresControllerTests : IClassFixture<BCKashWebApplicationFacto
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-closure-no-elevated@bckash.test", "gl.manage");
         var officeId = await CreateOfficeAsync("No Elevated Permission Office");
 
-        var closeResponse = await client.PostAsJsonAsync("/api/gl/closures", new CreateGlClosureRequest(officeId, new DateOnly(2026, 3, 31), null));
+        var closeResponse = await client.PostAsJsonAsync("/api/v1/gl/closures", new CreateGlClosureRequest(officeId, new DateOnly(2026, 3, 31), null));
         var closure = await closeResponse.Content.ReadFromJsonAsync<GlClosureResponse>(TestJson.Options);
 
-        var reopenResponse = await client.PostAsJsonAsync($"/api/gl/closures/{closure!.Id}/reopen", new ReopenGlClosureRequest(null));
+        var reopenResponse = await client.PostAsJsonAsync($"/api/v1/gl/closures/{closure!.Id}/reopen", new ReopenGlClosureRequest(null));
         Assert.Equal(HttpStatusCode.Forbidden, reopenResponse.StatusCode);
     }
 }

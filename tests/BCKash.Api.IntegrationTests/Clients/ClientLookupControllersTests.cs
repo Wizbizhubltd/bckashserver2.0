@@ -19,14 +19,14 @@ public class ClientRelationshipsControllerTests : IClassFixture<BCKashWebApplica
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "relationship-crud@bckash.test", "clients.manage");
 
-        var createResponse = await client.PostAsJsonAsync("/api/client-relationships", new SaveClientRelationshipRequest("Sibling"));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/client-relationships", new SaveClientRelationshipRequest("Sibling"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<ClientRelationshipResponse>(TestJson.Options);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/client-relationships/{created!.Id}", new SaveClientRelationshipRequest("Sibling (Updated)"));
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/client-relationships/{created!.Id}", new SaveClientRelationshipRequest("Sibling (Updated)"));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
 
-        var deleteResponse = await client.DeleteAsync($"/api/client-relationships/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/client-relationships/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 }
@@ -45,14 +45,14 @@ public class ClientIdentificationTypesControllerTests : IClassFixture<BCKashWebA
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "id-type-crud@bckash.test", "clients.manage");
 
-        var createResponse = await client.PostAsJsonAsync("/api/client-identification-types", new SaveClientIdentificationTypeRequest("National ID"));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/client-identification-types", new SaveClientIdentificationTypeRequest("National ID"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<ClientIdentificationTypeResponse>(TestJson.Options);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/client-identification-types/{created!.Id}", new SaveClientIdentificationTypeRequest("National ID (Updated)"));
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/client-identification-types/{created!.Id}", new SaveClientIdentificationTypeRequest("National ID (Updated)"));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
 
-        var deleteResponse = await client.DeleteAsync($"/api/client-identification-types/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/client-identification-types/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 }
@@ -71,14 +71,14 @@ public class ClientProfessionsControllerTests : IClassFixture<BCKashWebApplicati
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "profession-crud@bckash.test", "clients.manage");
 
-        var createResponse = await client.PostAsJsonAsync("/api/client-professions", new SaveClientProfessionRequest("Trader"));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/client-professions", new SaveClientProfessionRequest("Trader"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<ClientProfessionResponse>(TestJson.Options);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/client-professions/{created!.Id}", new SaveClientProfessionRequest("Trader (Updated)"));
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/client-professions/{created!.Id}", new SaveClientProfessionRequest("Trader (Updated)"));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
 
-        var deleteResponse = await client.DeleteAsync($"/api/client-professions/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/client-professions/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 }

@@ -11,7 +11,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>Aggregate record counts for the control portal's dashboard — read-only, so any authenticated staff member can view it (no permission policy beyond being logged in).</summary>
 [ApiController]
-[Route("api/dashboard")]
+[Route("api/v1/dashboard")]
 [Authorize]
 public class DashboardController : ControllerBase
 {

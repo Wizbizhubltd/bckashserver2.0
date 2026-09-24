@@ -10,7 +10,7 @@ public record SavingsInterestPostingResult(bool Posted, decimal InterestPosted);
 /// operation safe to call repeatedly: each method only acts on an account whose next
 /// calculation/posting date is actually due, so calling it more often than necessary is a
 /// no-op, not a double-accrual. <c>RunDueAsync</c> is the closest thing to "the job," triggered
-/// explicitly via <c>POST /api/savings-interest/run</c> rather than on a real schedule.
+/// explicitly via <c>POST /api/v1/savings-interest/run</c> rather than on a real schedule.
 /// </summary>
 public interface ISavingsInterestPostingService
 {

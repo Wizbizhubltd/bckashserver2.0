@@ -17,7 +17,7 @@ namespace BCKash.Api.Controllers;
 /// declarative policy attribute can't express.
 /// </summary>
 [ApiController]
-[Route("api/users")]
+[Route("api/v1/users")]
 [Authorize]
 public class UsersController : ControllerBase
 {

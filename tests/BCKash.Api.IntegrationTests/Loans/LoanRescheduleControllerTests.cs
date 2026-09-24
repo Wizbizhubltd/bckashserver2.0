@@ -39,22 +39,22 @@ public class LoanRescheduleControllerTests : IClassFixture<BCKashWebApplicationF
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
 
     private static async Task<int> CreateDisbursedLoanAsync(HttpClient client, string label)
     {
-        var productId = (await (await client.PostAsJsonAsync("/api/loan-products", CleanMonthlyProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
+        var productId = (await (await client.PostAsJsonAsync("/api/v1/loan-products", CleanMonthlyProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
         var clientId = await CreateClientAsync(client, label);
         var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, clientId, null, productId, 12000, 12, FrequencyType.Months, null);
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
-        var approveResponse = await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000, null));
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var approveResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000, null));
         var approved = await approveResponse.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         var loanId = approved!.LoanId!.Value;
 
-        await client.PostAsJsonAsync($"/api/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000, null));
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000, null));
         return loanId;
     }
 
@@ -68,24 +68,24 @@ public class LoanRescheduleControllerTests : IClassFixture<BCKashWebApplicationF
         var loanId = await CreateDisbursedLoanAsync(client, "Reschedule");
 
         // Pay off installment 1 (due 2026-02-01) so it's settled before the reschedule.
-        await client.PostAsJsonAsync($"/api/loans/{loanId}/repayments", new RecordRepaymentRequest(1120m, null, new DateOnly(2026, 1, 15), null));
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(1120m, null, new DateOnly(2026, 1, 15), null));
 
         // Installment 2 is due 2026-03-01 — reschedule everything from that date forward (11 remaining installments).
-        var createResponse = await client.PostAsJsonAsync($"/api/loans/{loanId}/reschedule-requests",
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/reschedule-requests",
             new CreateRescheduleRequest(10000m, new DateOnly(2026, 3, 1), true, "Client requested lower payments"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var request = await createResponse.Content.ReadFromJsonAsync<LoanRescheduleRequestResponse>(TestJson.Options);
         Assert.Equal(RescheduleRequestStatus.Pending, request!.Status);
 
-        var approveResponse = await client.PostAsync($"/api/loans/{loanId}/reschedule-requests/{request.Id}/approve", null);
+        var approveResponse = await client.PostAsync($"/api/v1/loans/{loanId}/reschedule-requests/{request.Id}/approve", null);
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
         var approved = await approveResponse.Content.ReadFromJsonAsync<LoanRescheduleRequestResponse>(TestJson.Options);
         Assert.Equal(RescheduleRequestStatus.Approved, approved!.Status);
 
-        var loan = await client.GetFromJsonAsync<LoanResponse>($"/api/loans/{loanId}", TestJson.Options);
+        var loan = await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options);
         Assert.Equal(LoanStatus.Rescheduled, loan!.Status);
 
-        var schedule = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/loans/{loanId}/schedule", TestJson.Options);
+        var schedule = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/v1/loans/{loanId}/schedule", TestJson.Options);
 
         // Installment 1 (already paid, before the reschedule-from date) is untouched.
         var first = schedule!.Single(s => s.Installment == 1);
@@ -106,18 +106,18 @@ public class LoanRescheduleControllerTests : IClassFixture<BCKashWebApplicationF
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "reschedule-reject@bckash.test", AllPermissions);
         var loanId = await CreateDisbursedLoanAsync(client, "RescheduleReject");
 
-        var scheduleBefore = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/loans/{loanId}/schedule", TestJson.Options);
+        var scheduleBefore = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/v1/loans/{loanId}/schedule", TestJson.Options);
 
-        var createResponse = await client.PostAsJsonAsync($"/api/loans/{loanId}/reschedule-requests",
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/reschedule-requests",
             new CreateRescheduleRequest(10000m, new DateOnly(2026, 3, 1), true, null));
         var request = await createResponse.Content.ReadFromJsonAsync<LoanRescheduleRequestResponse>(TestJson.Options);
 
-        var rejectResponse = await client.PostAsJsonAsync($"/api/loans/{loanId}/reschedule-requests/{request!.Id}/reject", new ReasonRequest("Not approved by credit committee"));
+        var rejectResponse = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/reschedule-requests/{request!.Id}/reject", new ReasonRequest("Not approved by credit committee"));
         Assert.Equal(HttpStatusCode.OK, rejectResponse.StatusCode);
         var rejected = await rejectResponse.Content.ReadFromJsonAsync<LoanRescheduleRequestResponse>(TestJson.Options);
         Assert.Equal(RescheduleRequestStatus.Rejected, rejected!.Status);
 
-        var scheduleAfter = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/loans/{loanId}/schedule", TestJson.Options);
+        var scheduleAfter = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/v1/loans/{loanId}/schedule", TestJson.Options);
         Assert.Equal(scheduleBefore!.Count, scheduleAfter!.Count);
         for (var i = 0; i < scheduleBefore.Count; i++)
         {
@@ -125,7 +125,7 @@ public class LoanRescheduleControllerTests : IClassFixture<BCKashWebApplicationF
             Assert.Equal(scheduleBefore[i].DueDate, scheduleAfter[i].DueDate);
         }
 
-        var loan = await client.GetFromJsonAsync<LoanResponse>($"/api/loans/{loanId}", TestJson.Options);
+        var loan = await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options);
         Assert.Equal(LoanStatus.Disbursed, loan!.Status);
     }
 }

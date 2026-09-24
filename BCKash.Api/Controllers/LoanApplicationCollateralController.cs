@@ -9,7 +9,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>Collateral captured at the application stage (FR-LN-22, via the additive `Collateral.LoanApplicationId` column — see Collateral.cs).</summary>
 [ApiController]
-[Route("api/loan-applications/{applicationId:int}/collateral")]
+[Route("api/v1/loan-applications/{applicationId:int}/collateral")]
 [Authorize]
 public class LoanApplicationCollateralController : ControllerBase
 {

@@ -25,7 +25,7 @@ public class SavingsTransfersControllerTests : IClassFixture<BCKashWebApplicatio
 
     private static async Task<int> CreateGlAccountAsync(HttpClient client, string name, string code, GlAccountType type)
     {
-        var response = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
+        var response = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest(name, null, code, type, true, null));
         var created = await response.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -50,17 +50,17 @@ public class SavingsTransfersControllerTests : IClassFixture<BCKashWebApplicatio
             GlAccountSavingsReferenceId: savingsControl, GlAccountOverdraftPortfolioId: null, GlAccountSavingsControlId: savingsControl,
             GlAccountInterestOnSavingsId: null, GlAccountSavingsWrittenOffId: null, GlAccountIncomeInterestId: null,
             GlAccountIncomeFeeId: null, GlAccountIncomePenaltyId: null);
-        var savingsProduct = await (await client.PostAsJsonAsync("/api/savings-products", savingsProductRequest)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var savingsProduct = await (await client.PostAsJsonAsync("/api/v1/savings-products", savingsProductRequest)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
 
         var clientRequest = new CreateClientRequest(
             null, null, null, null, null, null, null, "Transfer", null, "Borrower", "Transfer Borrower",
             null, "Transfer Borrower", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var borrower = await (await client.PostAsJsonAsync("/api/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
+        var borrower = await (await client.PostAsJsonAsync("/api/v1/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
 
-        var savingsAccount = await (await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, borrower!.Id, null, null, savingsProduct!.Id, null)))
+        var savingsAccount = await (await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, borrower!.Id, null, null, savingsProduct!.Id, null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
-        var approvedSavings = await (await client.PostAsJsonAsync($"/api/savings-accounts/{savingsAccount!.Id}/approve", new ApproveSavingsAccountRequest(5000m, null, new DateOnly(2026, 1, 1), null)))
+        var approvedSavings = await (await client.PostAsJsonAsync($"/api/v1/savings-accounts/{savingsAccount!.Id}/approve", new ApproveSavingsAccountRequest(5000m, null, new DateOnly(2026, 1, 1), null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
 
         var loanProductRequest = new SaveLoanProductRequest(
@@ -80,37 +80,37 @@ public class SavingsTransfersControllerTests : IClassFixture<BCKashWebApplicatio
             GlAccountReceivableFeeId: null, GlAccountReceivablePenaltyId: null, GlAccountLoanOverPaymentsId: null,
             GlAccountSuspendedIncomeId: null, GlAccountIncomeInterestId: incomeInterest, GlAccountIncomeFeeId: null,
             GlAccountIncomePenaltyId: null, GlAccountIncomeRecoveryId: null, GlAccountLoansWrittenOffId: null);
-        var loanProduct = await (await client.PostAsJsonAsync("/api/loan-products", loanProductRequest)).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
+        var loanProduct = await (await client.PostAsJsonAsync("/api/v1/loan-products", loanProductRequest)).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
 
         var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, borrower.Id, null, loanProduct!.Id, 12000m, 12, FrequencyType.Months, null);
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
-        var approvedApplication = await (await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000m, null)))
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var approvedApplication = await (await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000m, null)))
             .Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         var loanId = approvedApplication!.LoanId!.Value;
 
-        await client.PostAsJsonAsync($"/api/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000m, null));
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000m, null));
 
         // Repay installment 1 (1120 = 1000 principal + 120 interest) entirely from savings, in one call.
-        var transferResponse = await client.PostAsJsonAsync("/api/savings-transfers/repay-loan", new RepayLoanFromSavingsRequest(approvedSavings!.Id, loanId, 1120m, new DateOnly(2026, 1, 28), "Repay from savings"));
+        var transferResponse = await client.PostAsJsonAsync("/api/v1/savings-transfers/repay-loan", new RepayLoanFromSavingsRequest(approvedSavings!.Id, loanId, 1120m, new DateOnly(2026, 1, 28), "Repay from savings"));
         Assert.Equal(HttpStatusCode.OK, transferResponse.StatusCode);
 
         // Savings side debited.
-        var savingsAfter = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/savings-accounts/{approvedSavings.Id}", TestJson.Options);
+        var savingsAfter = await client.GetFromJsonAsync<SavingsAccountResponse>($"/api/v1/savings-accounts/{approvedSavings.Id}", TestJson.Options);
         Assert.Equal(3880m, savingsAfter!.Balance); // 5000 - 1120
 
         // Loan side credited — schedule line 1 fully paid.
-        var schedule = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/loans/{loanId}/schedule", TestJson.Options);
+        var schedule = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/v1/loans/{loanId}/schedule", TestJson.Options);
         var firstInstallment = schedule!.Single(s => s.Installment == 1);
         Assert.True(firstInstallment.Paid);
         Assert.Equal(1000m, firstInstallment.PrincipalPaid);
         Assert.Equal(120m, firstInstallment.InterestPaid);
 
         // One balanced GL batch covering both sides, traceable to both the savings account and the loan.
-        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?glAccountId={savingsControl}", TestJson.Options);
+        var entries = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?glAccountId={savingsControl}", TestJson.Options);
         var savingsLeg = entries!.Single(e => e.SavingsId == approvedSavings.Id && e.LoanId == loanId);
         Assert.Equal(1120m, savingsLeg.Debit);
 
-        var loanLegsResponse = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/gl/journal-entries?reference={savingsLeg.Reference}", TestJson.Options);
+        var loanLegsResponse = await client.GetFromJsonAsync<List<GlJournalEntryResponse>>($"/api/v1/gl/journal-entries?reference={savingsLeg.Reference}", TestJson.Options);
         var loanLegs = loanLegsResponse!;
         Assert.Equal(savingsLeg.Debit, loanLegs.Sum(e => e.Credit ?? 0m));
         Assert.All(loanLegs, e => Assert.Equal(loanId, e.LoanId));

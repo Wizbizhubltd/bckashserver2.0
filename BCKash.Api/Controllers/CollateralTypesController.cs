@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/collateral-types")]
+[Route("api/v1/collateral-types")]
 [Authorize]
 public class CollateralTypesController : ControllerBase
 {

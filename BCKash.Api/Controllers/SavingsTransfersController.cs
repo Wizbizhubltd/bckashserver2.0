@@ -7,7 +7,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>FR-SAV-6's linked loan↔savings transfers.</summary>
 [ApiController]
-[Route("api/savings-transfers")]
+[Route("api/v1/savings-transfers")]
 [Authorize]
 public class SavingsTransfersController : ControllerBase
 {

@@ -20,7 +20,7 @@ public class GlAccountsControllerTests : IClassFixture<BCKashWebApplicationFacto
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-account-crud@bckash.test", "gl.manage");
 
-        var response = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Cash", null, "1000", GlAccountType.Asset, true, null));
+        var response = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Cash", null, "1000", GlAccountType.Asset, true, null));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
@@ -33,13 +33,13 @@ public class GlAccountsControllerTests : IClassFixture<BCKashWebApplicationFacto
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-account-cycle@bckash.test", "gl.manage");
 
-        var parentResponse = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Assets", null, "1", GlAccountType.Asset, true, null));
+        var parentResponse = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Assets", null, "1", GlAccountType.Asset, true, null));
         var parent = await parentResponse.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
 
-        var childResponse = await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Cash", parent!.Id, "1000", GlAccountType.Asset, true, null));
+        var childResponse = await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Cash", parent!.Id, "1000", GlAccountType.Asset, true, null));
         var child = await childResponse.Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
 
-        var cycleResponse = await client.PutAsJsonAsync($"/api/gl-accounts/{parent.Id}",
+        var cycleResponse = await client.PutAsJsonAsync($"/api/v1/gl-accounts/{parent.Id}",
             new SaveGlAccountRequest("Assets", child!.Id, "1", GlAccountType.Asset, true, null));
 
         Assert.Equal(HttpStatusCode.BadRequest, cycleResponse.StatusCode);
@@ -50,13 +50,13 @@ public class GlAccountsControllerTests : IClassFixture<BCKashWebApplicationFacto
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-account-deactivate@bckash.test", "gl.manage");
 
-        var created = await (await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Suspense", null, "9999", GlAccountType.Liability, true, null)))
+        var created = await (await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Suspense", null, "9999", GlAccountType.Liability, true, null)))
             .Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
 
-        var deactivated = await (await client.PostAsync($"/api/gl-accounts/{created!.Id}/deactivate", null)).Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
+        var deactivated = await (await client.PostAsync($"/api/v1/gl-accounts/{created!.Id}/deactivate", null)).Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         Assert.False(deactivated!.Active);
 
-        var reactivated = await (await client.PostAsync($"/api/gl-accounts/{created.Id}/activate", null)).Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
+        var reactivated = await (await client.PostAsync($"/api/v1/gl-accounts/{created.Id}/activate", null)).Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         Assert.True(reactivated!.Active);
     }
 }

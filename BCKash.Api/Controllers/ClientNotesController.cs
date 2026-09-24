@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/clients/{clientId:int}/notes")]
+[Route("api/v1/clients/{clientId:int}/notes")]
 [Authorize]
 public class ClientNotesController : ControllerBase
 {

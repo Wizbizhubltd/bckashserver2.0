@@ -13,7 +13,7 @@ namespace BCKash.Api.Controllers;
 /// bespoke routes.
 /// </summary>
 [ApiController]
-[Route("api/reports")]
+[Route("api/v1/reports")]
 [Authorize(Policy = ViewPolicy)]
 public class ReportsController : ControllerBase
 {

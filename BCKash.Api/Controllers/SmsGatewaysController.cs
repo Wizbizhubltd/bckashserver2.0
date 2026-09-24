@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/sms-gateways")]
+[Route("api/v1/sms-gateways")]
 [Authorize]
 public class SmsGatewaysController : ControllerBase
 {

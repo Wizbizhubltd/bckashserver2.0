@@ -14,7 +14,7 @@ namespace BCKash.Api.Controllers;
 /// and reusable by loans/groups/savings/etc. in later phases via the same Type+RecordId shape.
 /// </summary>
 [ApiController]
-[Route("api/clients/{clientId:int}/documents")]
+[Route("api/v1/clients/{clientId:int}/documents")]
 [Authorize]
 public class DocumentsController : ControllerBase
 {

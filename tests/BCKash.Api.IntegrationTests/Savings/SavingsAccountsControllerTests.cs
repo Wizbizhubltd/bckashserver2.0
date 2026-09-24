@@ -35,7 +35,7 @@ public class SavingsAccountsControllerTests : IClassFixture<BCKashWebApplication
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -45,16 +45,16 @@ public class SavingsAccountsControllerTests : IClassFixture<BCKashWebApplication
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-account-open@bckash.test", AllPermissions);
 
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", ProductRequest("Approve Test"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest("Approve Test"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         var clientId = await CreateClientAsync(client, "SavOpen");
 
-        var openResponse = await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null));
+        var openResponse = await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null));
         Assert.Equal(HttpStatusCode.Created, openResponse.StatusCode);
         var account = await openResponse.Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
         Assert.Equal(SavingsAccountStatus.Pending, account!.Status);
         Assert.StartsWith("SV", account.AccountNumber);
 
-        var approveResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/approve", new ApproveSavingsAccountRequest(5000m, null, new DateOnly(2026, 1, 1), "Approved"));
+        var approveResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/approve", new ApproveSavingsAccountRequest(5000m, null, new DateOnly(2026, 1, 1), "Approved"));
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
         var approved = await approveResponse.Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
 
@@ -70,15 +70,15 @@ public class SavingsAccountsControllerTests : IClassFixture<BCKashWebApplication
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-account-decline@bckash.test", AllPermissions);
 
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", ProductRequest("Decline Test"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest("Decline Test"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         var clientId = await CreateClientAsync(client, "SavDecline");
-        var account = await (await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
+        var account = await (await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
 
-        var blankReasonResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account!.Id}/decline", new DeclineSavingsAccountRequest(""));
+        var blankReasonResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account!.Id}/decline", new DeclineSavingsAccountRequest(""));
         Assert.Equal(HttpStatusCode.BadRequest, blankReasonResponse.StatusCode);
 
-        var declineResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/decline", new DeclineSavingsAccountRequest("Failed KYC"));
+        var declineResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/decline", new DeclineSavingsAccountRequest("Failed KYC"));
         Assert.Equal(HttpStatusCode.OK, declineResponse.StatusCode);
         var declined = await declineResponse.Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
         Assert.Equal(SavingsAccountStatus.Declined, declined!.Status);
@@ -89,13 +89,13 @@ public class SavingsAccountsControllerTests : IClassFixture<BCKashWebApplication
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-account-close@bckash.test", AllPermissions);
 
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", ProductRequest("Close Test"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest("Close Test"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         var clientId = await CreateClientAsync(client, "SavClose");
-        var account = await (await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
+        var account = await (await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, clientId, null, null, product!.Id, null)))
             .Content.ReadFromJsonAsync<SavingsAccountResponse>(TestJson.Options);
-        await client.PostAsJsonAsync($"/api/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(1000m, null, new DateOnly(2026, 1, 1), null));
+        await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account!.Id}/approve", new ApproveSavingsAccountRequest(1000m, null, new DateOnly(2026, 1, 1), null));
 
-        var closeResponse = await client.PostAsJsonAsync($"/api/savings-accounts/{account.Id}/close", "leftover balance");
+        var closeResponse = await client.PostAsJsonAsync($"/api/v1/savings-accounts/{account.Id}/close", "leftover balance");
         Assert.Equal(HttpStatusCode.Conflict, closeResponse.StatusCode);
     }
 }

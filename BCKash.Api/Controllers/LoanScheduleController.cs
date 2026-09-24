@@ -9,7 +9,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>Read-only view of a loan's repayment schedule (FR-LN-12 to FR-LN-14), generated at disbursement — see LoanService.DisburseAsync.</summary>
 [ApiController]
-[Route("api/loans/{loanId:int}/schedule")]
+[Route("api/v1/loans/{loanId:int}/schedule")]
 [Authorize]
 public class LoanScheduleController : ControllerBase
 {

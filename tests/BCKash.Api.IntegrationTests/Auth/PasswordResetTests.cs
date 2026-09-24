@@ -28,13 +28,13 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         var challenge = await RequestResetAsync(client, "reset-success@bckash.test");
         var code = ReadResetCode("reset-success@bckash.test");
 
-        var resetResponse = await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, code, "New-Password1!"));
+        var resetResponse = await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, code, "New-Password1!"));
         Assert.Equal(HttpStatusCode.NoContent, resetResponse.StatusCode);
 
-        var oldLogin = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("reset-success@bckash.test", "Old-Password1!"));
+        var oldLogin = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("reset-success@bckash.test", "Old-Password1!"));
         Assert.Equal(HttpStatusCode.Unauthorized, oldLogin.StatusCode);
 
-        var newLogin = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("reset-success@bckash.test", "New-Password1!"));
+        var newLogin = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest("reset-success@bckash.test", "New-Password1!"));
         Assert.Equal(HttpStatusCode.OK, newLogin.StatusCode);
     }
 
@@ -47,8 +47,8 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         var challenge = await RequestResetAsync(client, "reset-reuse@bckash.test");
         var code = ReadResetCode("reset-reuse@bckash.test");
 
-        await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, code, "New-Password1!"));
-        var second = await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, code, "Another-Password1!"));
+        await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, code, "New-Password1!"));
+        var second = await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, code, "Another-Password1!"));
 
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
     }
@@ -60,7 +60,7 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         using var client = _factory.CreateClient();
 
         var challenge = await RequestResetAsync(client, "reset-wrong-code@bckash.test");
-        var response = await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, "000000", "New-Password1!"));
+        var response = await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, "000000", "New-Password1!"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -74,10 +74,10 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         var challenge = await RequestResetAsync(client, "reset-weak@bckash.test");
         var code = ReadResetCode("reset-weak@bckash.test");
 
-        var weak = await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, code, "short"));
+        var weak = await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, code, "short"));
         Assert.Equal(HttpStatusCode.BadRequest, weak.StatusCode);
 
-        var retry = await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, code, "Long-Enough1!"));
+        var retry = await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, code, "Long-Enough1!"));
         Assert.Equal(HttpStatusCode.NoContent, retry.StatusCode);
     }
 
@@ -87,7 +87,7 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         using var client = _factory.CreateClient();
 
         var challenge = await RequestResetAsync(client, "reset-nobody@bckash.test");
-        var response = await client.PostAsJsonAsync("/api/auth/password/reset", new ResetPasswordRequest(challenge, "123456", "New-Password1!"));
+        var response = await client.PostAsJsonAsync("/api/v1/auth/password/reset", new ResetPasswordRequest(challenge, "123456", "New-Password1!"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -101,7 +101,7 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         var challenge = await RequestResetAsync(client, "reset-no-login@bckash.test");
         var code = ReadResetCode("reset-no-login@bckash.test");
 
-        var response = await client.PostAsJsonAsync("/api/auth/login/otp/verify", new OtpVerifyRequest(challenge, code));
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(challenge, code));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -113,7 +113,7 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
         using var client = _factory.CreateClient();
 
         await RequestResetAsync(client, "reset-cooldown@bckash.test");
-        var second = await client.PostAsJsonAsync("/api/auth/password/forgot", new ForgotPasswordRequest("reset-cooldown@bckash.test"));
+        var second = await client.PostAsJsonAsync("/api/v1/auth/password/forgot", new ForgotPasswordRequest("reset-cooldown@bckash.test"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
     }
@@ -127,7 +127,7 @@ public class PasswordResetTests : IClassFixture<BCKashWebApplicationFactory>
 
     private static async Task<string> RequestResetAsync(HttpClient client, string email)
     {
-        var response = await client.PostAsJsonAsync("/api/auth/password/forgot", new ForgotPasswordRequest(email));
+        var response = await client.PostAsJsonAsync("/api/v1/auth/password/forgot", new ForgotPasswordRequest(email));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<ForgotPasswordResponse>();
         return body!.ChallengeToken;

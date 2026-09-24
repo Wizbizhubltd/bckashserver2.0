@@ -21,7 +21,7 @@ public class ClientNotesControllerTests : IClassFixture<BCKashWebApplicationFact
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -32,21 +32,21 @@ public class ClientNotesControllerTests : IClassFixture<BCKashWebApplicationFact
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "note-crud@bckash.test", "clients.manage");
         var clientId = await CreateClientAsync(client, "Note");
 
-        var createResponse = await client.PostAsJsonAsync($"/api/clients/{clientId}/notes", new SaveNoteRequest("First contact made."));
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/clients/{clientId}/notes", new SaveNoteRequest("First contact made."));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<NoteResponse>(TestJson.Options);
         Assert.NotNull(created!.CreatedById);
 
-        var listResponse = await client.GetFromJsonAsync<List<NoteResponse>>($"/api/clients/{clientId}/notes", TestJson.Options);
+        var listResponse = await client.GetFromJsonAsync<List<NoteResponse>>($"/api/v1/clients/{clientId}/notes", TestJson.Options);
         Assert.Single(listResponse!);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/clients/{clientId}/notes/{created.Id}", new SaveNoteRequest("Follow-up scheduled."));
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/clients/{clientId}/notes/{created.Id}", new SaveNoteRequest("Follow-up scheduled."));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         var updated = await updateResponse.Content.ReadFromJsonAsync<NoteResponse>(TestJson.Options);
         Assert.Equal("Follow-up scheduled.", updated!.Notes);
         Assert.NotNull(updated.ModifiedById);
 
-        var deleteResponse = await client.DeleteAsync($"/api/clients/{clientId}/notes/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/clients/{clientId}/notes/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 
@@ -55,7 +55,7 @@ public class ClientNotesControllerTests : IClassFixture<BCKashWebApplicationFact
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "note-404@bckash.test", "clients.manage");
 
-        var response = await client.GetAsync("/api/clients/999999/notes");
+        var response = await client.GetAsync("/api/v1/clients/999999/notes");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

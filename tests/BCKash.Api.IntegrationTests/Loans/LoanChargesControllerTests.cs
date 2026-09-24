@@ -40,18 +40,18 @@ public class LoanChargesControllerTests : IClassFixture<BCKashWebApplicationFact
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
 
     private static async Task<int> CreateApprovedLoanAsync(HttpClient client, string label)
     {
-        var productId = (await (await client.PostAsJsonAsync("/api/loan-products", NewProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
+        var productId = (await (await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
         var clientId = await CreateClientAsync(client, label);
         var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, clientId, null, productId, 5000, 12, FrequencyType.Months, null);
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
-        var approveResponse = await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(4500, null));
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var approveResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(4500, null));
         var approved = await approveResponse.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         return approved!.LoanId!.Value;
     }
@@ -63,7 +63,7 @@ public class LoanChargesControllerTests : IClassFixture<BCKashWebApplicationFact
             ChargeFrequency: 1, ChargeFrequencyType: ChargeFrequencyType.Months, ChargeFrequencyAmount: 1,
             Amount: 100, MinimumAmount: null, MaximumAmount: null, ChargePaymentMode: ChargePaymentMode.Regular,
             Penalty: false, Override: false, GlAccountIncomeId: null);
-        var response = await client.PostAsJsonAsync("/api/charges", request);
+        var response = await client.PostAsJsonAsync("/api/v1/charges", request);
         var created = await response.Content.ReadFromJsonAsync<ChargeResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -76,23 +76,23 @@ public class LoanChargesControllerTests : IClassFixture<BCKashWebApplicationFact
         var loanId = await CreateApprovedLoanAsync(client, "Charge");
         var chargeId = await CreateLoanScopedChargeAsync(client, "Disbursement Fee");
 
-        var createResponse = await client.PostAsJsonAsync($"/api/loans/{loanId}/charges",
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/charges",
             new SaveLoanChargeRequest(chargeId, false, LoanChargeType.Disbursement, LoanChargeCalculationType.Flat, 100, null, 0));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<LoanChargeResponse>(TestJson.Options);
         Assert.Equal(100, created!.Amount);
         Assert.Equal(loanId, created.LoanId);
 
-        var listResponse = await client.GetFromJsonAsync<List<LoanChargeResponse>>($"/api/loans/{loanId}/charges", TestJson.Options);
+        var listResponse = await client.GetFromJsonAsync<List<LoanChargeResponse>>($"/api/v1/loans/{loanId}/charges", TestJson.Options);
         Assert.Single(listResponse!);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/loans/{loanId}/charges/{created.Id}",
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/loans/{loanId}/charges/{created.Id}",
             new SaveLoanChargeRequest(chargeId, false, LoanChargeType.Disbursement, LoanChargeCalculationType.Flat, 150, null, 0));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         var updated = await updateResponse.Content.ReadFromJsonAsync<LoanChargeResponse>(TestJson.Options);
         Assert.Equal(150, updated!.Amount);
 
-        var deleteResponse = await client.DeleteAsync($"/api/loans/{loanId}/charges/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/loans/{loanId}/charges/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 
@@ -108,9 +108,9 @@ public class LoanChargesControllerTests : IClassFixture<BCKashWebApplicationFact
             ChargeFrequency: 1, ChargeFrequencyType: ChargeFrequencyType.Months, ChargeFrequencyAmount: 1,
             Amount: 50, MinimumAmount: null, MaximumAmount: null, ChargePaymentMode: ChargePaymentMode.Regular,
             Penalty: false, Override: false, GlAccountIncomeId: null);
-        var savingsCharge = await (await client.PostAsJsonAsync("/api/charges", savingsChargeRequest)).Content.ReadFromJsonAsync<ChargeResponse>(TestJson.Options);
+        var savingsCharge = await (await client.PostAsJsonAsync("/api/v1/charges", savingsChargeRequest)).Content.ReadFromJsonAsync<ChargeResponse>(TestJson.Options);
 
-        var response = await client.PostAsJsonAsync($"/api/loans/{loanId}/charges",
+        var response = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/charges",
             new SaveLoanChargeRequest(savingsCharge!.Id, false, LoanChargeType.Disbursement, LoanChargeCalculationType.Flat, 50, null, 0));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -123,7 +123,7 @@ public class LoanChargesControllerTests : IClassFixture<BCKashWebApplicationFact
             ["loan-applications.manage", "loan-applications.approve", "loan-products.manage", "clients.manage", "loan-servicing.manage"]);
         var loanId = await CreateApprovedLoanAsync(client, "NoRef");
 
-        var response = await client.PostAsJsonAsync($"/api/loans/{loanId}/charges",
+        var response = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/charges",
             new SaveLoanChargeRequest(null, true, LoanChargeType.OverdueInstallmentFee, LoanChargeCalculationType.Flat, 25, null, 5));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -137,7 +137,7 @@ public class LoanChargesControllerTests : IClassFixture<BCKashWebApplicationFact
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "loancharge-404@bckash.test", "loan-servicing.manage");
 
-        var response = await client.GetAsync("/api/loans/999999/charges");
+        var response = await client.GetAsync("/api/v1/loans/999999/charges");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/loan-purposes")]
+[Route("api/v1/loan-purposes")]
 [Authorize]
 public class LoanPurposesController : ControllerBase
 {

@@ -17,9 +17,9 @@ public class GlJournalEntriesControllerTests : IClassFixture<BCKashWebApplicatio
 
     private static async Task<(int CashId, int IncomeId)> CreateAccountsAsync(HttpClient client, bool cashManualEntries = true)
     {
-        var cash = await (await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Cash", null, "1000", GlAccountType.Asset, cashManualEntries, null)))
+        var cash = await (await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Cash", null, "1000", GlAccountType.Asset, cashManualEntries, null)))
             .Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
-        var income = await (await client.PostAsJsonAsync("/api/gl-accounts", new SaveGlAccountRequest("Other Income", null, "4000", GlAccountType.Income, true, null)))
+        var income = await (await client.PostAsJsonAsync("/api/v1/gl-accounts", new SaveGlAccountRequest("Other Income", null, "4000", GlAccountType.Income, true, null)))
             .Content.ReadFromJsonAsync<GlAccountResponse>(TestJson.Options);
         return (cash!.Id, income!.Id);
     }
@@ -30,7 +30,7 @@ public class GlJournalEntriesControllerTests : IClassFixture<BCKashWebApplicatio
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-manual-entry@bckash.test", "gl.manage");
         var (cashId, incomeId) = await CreateAccountsAsync(client);
 
-        var createResponse = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var createResponse = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             null, new DateOnly(2026, 1, 15),
             [new JournalEntryLineRequest(cashId, 500m, null), new JournalEntryLineRequest(incomeId, null, 500m)],
             "Sundry income"));
@@ -40,12 +40,12 @@ public class GlJournalEntriesControllerTests : IClassFixture<BCKashWebApplicatio
         Assert.All(created, e => Assert.False(e.Approved));
         var reference = created[0].Reference!;
 
-        var approveResponse = await client.PostAsJsonAsync($"/api/gl/journal-entries/{reference}/approve", new ApproveJournalEntryRequest("Looks right"));
+        var approveResponse = await client.PostAsJsonAsync($"/api/v1/gl/journal-entries/{reference}/approve", new ApproveJournalEntryRequest("Looks right"));
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
         var approved = await approveResponse.Content.ReadFromJsonAsync<List<GlJournalEntryResponse>>(TestJson.Options);
         Assert.All(approved!, e => Assert.True(e.Approved));
 
-        var reverseResponse = await client.PostAsync($"/api/gl/journal-entries/{reference}/reverse", null);
+        var reverseResponse = await client.PostAsync($"/api/v1/gl/journal-entries/{reference}/reverse", null);
         Assert.Equal(HttpStatusCode.OK, reverseResponse.StatusCode);
         var reversed = await reverseResponse.Content.ReadFromJsonAsync<List<GlJournalEntryResponse>>(TestJson.Options);
         Assert.All(reversed!, e => Assert.True(e.Reversed));
@@ -57,7 +57,7 @@ public class GlJournalEntriesControllerTests : IClassFixture<BCKashWebApplicatio
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-unbalanced@bckash.test", "gl.manage");
         var (cashId, incomeId) = await CreateAccountsAsync(client);
 
-        var response = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             null, new DateOnly(2026, 1, 15),
             [new JournalEntryLineRequest(cashId, 500m, null), new JournalEntryLineRequest(incomeId, null, 400m)],
             "Mismatched"));
@@ -71,7 +71,7 @@ public class GlJournalEntriesControllerTests : IClassFixture<BCKashWebApplicatio
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "gl-manual-disabled@bckash.test", "gl.manage");
         var (cashId, incomeId) = await CreateAccountsAsync(client, cashManualEntries: false);
 
-        var response = await client.PostAsJsonAsync("/api/gl/journal-entries", new CreateManualJournalEntryRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/gl/journal-entries", new CreateManualJournalEntryRequest(
             null, new DateOnly(2026, 1, 15),
             [new JournalEntryLineRequest(cashId, 500m, null), new JournalEntryLineRequest(incomeId, null, 500m)],
             "Should be blocked"));

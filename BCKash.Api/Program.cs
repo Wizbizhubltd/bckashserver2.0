@@ -124,11 +124,13 @@ if (!app.Configuration.GetValue<bool>("Testing:UseSqlite"))
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    // Docs live under /api alongside the versioned routes (/api/v1/...): the UI at
+    // /api/swagger, one OpenAPI document per API version at /api/openapi/{version}.json.
+    app.MapOpenApi("/api/openapi/{documentName}.json");
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("/openapi/v1.json", "BCKash API v1");
-        options.RoutePrefix = "swagger";
+        options.SwaggerEndpoint("/api/openapi/v1.json", "BCKash API v1");
+        options.RoutePrefix = "api/swagger";
     });
 }
 
@@ -137,6 +139,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapGet("/", () => "BCKash API");
+app.MapGet("/", () => "BCKash API").ExcludeFromDescription();
 
 app.Run();

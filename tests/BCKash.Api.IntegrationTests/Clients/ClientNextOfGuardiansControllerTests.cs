@@ -21,7 +21,7 @@ public class ClientNextOfGuardiansControllerTests : IClassFixture<BCKashWebAppli
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -32,21 +32,21 @@ public class ClientNextOfGuardiansControllerTests : IClassFixture<BCKashWebAppli
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "guardian-crud@bckash.test", "clients.manage");
         var clientId = await CreateClientAsync(client, "Guardian");
 
-        var createResponse = await client.PostAsJsonAsync($"/api/clients/{clientId}/next-of-guardians",
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/clients/{clientId}/next-of-guardians",
             new SaveClientNextOfGuardianRequest(null, null, "Emeka", null, "Nwosu", null, null, null, null, null, "08077776666", null, null, null, "Uncle"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<ClientNextOfGuardianResponse>(TestJson.Options);
 
-        var listResponse = await client.GetFromJsonAsync<List<ClientNextOfGuardianResponse>>($"/api/clients/{clientId}/next-of-guardians", TestJson.Options);
+        var listResponse = await client.GetFromJsonAsync<List<ClientNextOfGuardianResponse>>($"/api/v1/clients/{clientId}/next-of-guardians", TestJson.Options);
         Assert.Single(listResponse!);
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/clients/{clientId}/next-of-guardians/{created!.Id}",
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/clients/{clientId}/next-of-guardians/{created!.Id}",
             new SaveClientNextOfGuardianRequest(null, null, "Emeka", null, "Nwosu-Updated", null, null, null, null, null, "08077776666", null, null, null, null));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         var updated = await updateResponse.Content.ReadFromJsonAsync<ClientNextOfGuardianResponse>(TestJson.Options);
         Assert.Equal("Nwosu-Updated", updated!.LastName);
 
-        var deleteResponse = await client.DeleteAsync($"/api/clients/{clientId}/next-of-guardians/{created.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/clients/{clientId}/next-of-guardians/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 
@@ -55,7 +55,7 @@ public class ClientNextOfGuardiansControllerTests : IClassFixture<BCKashWebAppli
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "guardian-404@bckash.test", "clients.manage");
 
-        var response = await client.GetAsync("/api/clients/999999/next-of-guardians");
+        var response = await client.GetAsync("/api/v1/clients/999999/next-of-guardians");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

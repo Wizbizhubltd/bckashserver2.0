@@ -30,12 +30,12 @@ public class ThrottleTests : IClassFixture<BCKashWebApplicationFactory>
 
         for (var i = 0; i < 3; i++)
         {
-            var failed = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(user.Email, "wrong-password"));
+            var failed = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(user.Email, "wrong-password"));
             Assert.Equal(HttpStatusCode.Unauthorized, failed.StatusCode);
         }
 
         // Even the CORRECT password is now rejected — the account is locked, not just the bad guess.
-        var lockedResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(user.Email, "Correct-Password1!"));
+        var lockedResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(user.Email, "Correct-Password1!"));
         Assert.Equal(HttpStatusCode.TooManyRequests, lockedResponse.StatusCode);
     }
 
@@ -56,7 +56,7 @@ public class ThrottleTests : IClassFixture<BCKashWebApplicationFactory>
         await db.SaveChangesAsync();
 
         using var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(user.Email, "Correct-Password1!"));
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(user.Email, "Correct-Password1!"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

@@ -45,7 +45,7 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-crud@bckash.test", "loan-products.manage");
 
-        var response = await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("Standard Loan"));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Standard Loan"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
@@ -60,7 +60,7 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, $"product-range-{min}-{@default}-{max}@bckash.test", "loan-products.manage");
 
-        var response = await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("Bad Range", minPrincipal: min, defaultPrincipal: @default, maxPrincipal: max));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Bad Range", minPrincipal: min, defaultPrincipal: @default, maxPrincipal: max));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -70,7 +70,7 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-range-term@bckash.test", "loan-products.manage");
 
-        var response = await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("Bad Term", minTerm: 24, defaultTerm: 12, maxTerm: 6));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Bad Term", minTerm: 24, defaultTerm: 12, maxTerm: 6));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -80,7 +80,7 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-range-rate@bckash.test", "loan-products.manage");
 
-        var response = await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("Bad Rate", minRate: 20, defaultRate: 15, maxRate: 10));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Bad Rate", minRate: 20, defaultRate: 15, maxRate: 10));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -89,13 +89,13 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
     public async Task Delete_is_blocked_once_a_loan_exists_against_the_product_but_allowed_before()
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-delete@bckash.test", "loan-products.manage");
-        var created = await (await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("Deletable"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
+        var created = await (await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Deletable"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
 
         // No loan yet — hard delete allowed.
-        var earlyDelete = await client.DeleteAsync($"/api/loan-products/{created!.Id}");
+        var earlyDelete = await client.DeleteAsync($"/api/v1/loan-products/{created!.Id}");
         Assert.Equal(HttpStatusCode.NoContent, earlyDelete.StatusCode);
 
-        var inUseProduct = await (await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("In Use"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
+        var inUseProduct = await (await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("In Use"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
@@ -103,7 +103,7 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
             await db.SaveChangesAsync();
         }
 
-        var blockedDelete = await client.DeleteAsync($"/api/loan-products/{inUseProduct!.Id}");
+        var blockedDelete = await client.DeleteAsync($"/api/v1/loan-products/{inUseProduct!.Id}");
         Assert.Equal(HttpStatusCode.Conflict, blockedDelete.StatusCode);
     }
 
@@ -111,14 +111,14 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
     public async Task Activate_and_deactivate_toggle_the_Active_flag()
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-activate@bckash.test", "loan-products.manage");
-        var created = await (await client.PostAsJsonAsync("/api/loan-products", NewProductRequest("Togglable"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
+        var created = await (await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Togglable"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
 
-        var deactivateResponse = await client.PostAsync($"/api/loan-products/{created!.Id}/deactivate", null);
+        var deactivateResponse = await client.PostAsync($"/api/v1/loan-products/{created!.Id}/deactivate", null);
         Assert.Equal(HttpStatusCode.OK, deactivateResponse.StatusCode);
         var deactivated = await deactivateResponse.Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
         Assert.False(deactivated!.Active);
 
-        var activateResponse = await client.PostAsync($"/api/loan-products/{created.Id}/activate", null);
+        var activateResponse = await client.PostAsync($"/api/v1/loan-products/{created.Id}/activate", null);
         var activated = await activateResponse.Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
         Assert.True(activated!.Active);
     }

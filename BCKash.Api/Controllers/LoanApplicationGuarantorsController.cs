@@ -12,7 +12,7 @@ namespace BCKash.Api.Controllers;
 /// same "no state machine to guard" reasoning as the Phase 2/3 sub-resource controllers.
 /// </summary>
 [ApiController]
-[Route("api/loan-applications/{applicationId:int}/guarantors")]
+[Route("api/v1/loan-applications/{applicationId:int}/guarantors")]
 [Authorize]
 public class LoanApplicationGuarantorsController : ControllerBase
 {

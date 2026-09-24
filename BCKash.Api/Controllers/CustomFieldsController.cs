@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/custom-fields")]
+[Route("api/v1/custom-fields")]
 [Authorize]
 public class CustomFieldsController : ControllerBase
 {

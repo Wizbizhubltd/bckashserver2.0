@@ -39,22 +39,22 @@ public class LoanNpaControllerTests : IClassFixture<BCKashWebApplicationFactory>
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
 
     private static async Task<int> CreateDisbursedLoanAsync(HttpClient client, string label, DateOnly disbursementDate, int? npaDays, bool npaSuspendIncome)
     {
-        var productId = (await (await client.PostAsJsonAsync("/api/loan-products", ProductRequest($"{label} Product", npaDays, npaSuspendIncome))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
+        var productId = (await (await client.PostAsJsonAsync("/api/v1/loan-products", ProductRequest($"{label} Product", npaDays, npaSuspendIncome))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
         var clientId = await CreateClientAsync(client, label);
         var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, clientId, null, productId, 12000, 12, FrequencyType.Months, null);
-        var application = await (await client.PostAsJsonAsync("/api/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
-        var approveResponse = await client.PostAsJsonAsync($"/api/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000, null));
+        var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
+        var approveResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000, null));
         var approved = await approveResponse.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         var loanId = approved!.LoanId!.Value;
 
-        await client.PostAsJsonAsync($"/api/loans/{loanId}/disburse", new DisburseLoanRequest(disbursementDate, 12000, null));
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(disbursementDate, 12000, null));
         return loanId;
     }
 
@@ -71,7 +71,7 @@ public class LoanNpaControllerTests : IClassFixture<BCKashWebApplicationFactory>
         var disbursementDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-13);
         var loanId = await CreateDisbursedLoanAsync(client, "NpaFlagged", disbursementDate, npaDays: 90, npaSuspendIncome: true);
 
-        var response = await client.PostAsync($"/api/loans/{loanId}/recompute-npa", null);
+        var response = await client.PostAsync($"/api/v1/loans/{loanId}/recompute-npa", null);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var status = await response.Content.ReadFromJsonAsync<NpaStatusResponse>(TestJson.Options);
@@ -79,7 +79,7 @@ public class LoanNpaControllerTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.True(status.IncomeSuspended);
         Assert.True(status.DaysInArrears > 90);
 
-        var loan = await client.GetFromJsonAsync<LoanResponse>($"/api/loans/{loanId}", TestJson.Options);
+        var loan = await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options);
         Assert.True(loan!.IsNpa);
         Assert.True(loan.IncomeSuspended);
     }
@@ -93,7 +93,7 @@ public class LoanNpaControllerTests : IClassFixture<BCKashWebApplicationFactory>
         var disbursementDate = DateOnly.FromDateTime(DateTime.UtcNow);
         var loanId = await CreateDisbursedLoanAsync(client, "NpaClean", disbursementDate, npaDays: 90, npaSuspendIncome: true);
 
-        var response = await client.PostAsync($"/api/loans/{loanId}/recompute-npa", null);
+        var response = await client.PostAsync($"/api/v1/loans/{loanId}/recompute-npa", null);
         var status = await response.Content.ReadFromJsonAsync<NpaStatusResponse>(TestJson.Options);
 
         Assert.False(status!.IsNpa);
@@ -108,7 +108,7 @@ public class LoanNpaControllerTests : IClassFixture<BCKashWebApplicationFactory>
         var disbursementDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-13);
         var loanId = await CreateDisbursedLoanAsync(client, "NpaNoSuspend", disbursementDate, npaDays: 90, npaSuspendIncome: false);
 
-        var response = await client.PostAsync($"/api/loans/{loanId}/recompute-npa", null);
+        var response = await client.PostAsync($"/api/v1/loans/{loanId}/recompute-npa", null);
         var status = await response.Content.ReadFromJsonAsync<NpaStatusResponse>(TestJson.Options);
 
         Assert.True(status!.IsNpa);

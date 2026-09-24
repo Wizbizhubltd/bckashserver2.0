@@ -34,12 +34,12 @@ public class CustomFieldsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, $"customfield-{fieldType}@bckash.test", "organization.manage");
 
-        var createResponse = await client.PostAsJsonAsync("/api/custom-fields", new SaveCustomFieldRequest(
+        var createResponse = await client.PostAsJsonAsync("/api/v1/custom-fields", new SaveCustomFieldRequest(
             "client", $"Test {fieldType}", fieldType, false, options, options, options));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var field = await createResponse.Content.ReadFromJsonAsync<CustomFieldResponse>(TestJson.Options);
 
-        var captureResponse = await client.PostAsJsonAsync("/api/custom-fields/values", new CaptureCustomFieldValueRequest(
+        var captureResponse = await client.PostAsJsonAsync("/api/v1/custom-fields/values", new CaptureCustomFieldValueRequest(
             field!.Id, "Client", 12345, value));
 
         Assert.True(
@@ -57,11 +57,11 @@ public class CustomFieldsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "customfield-invalid-select@bckash.test", "organization.manage");
 
-        var createResponse = await client.PostAsJsonAsync("/api/custom-fields", new SaveCustomFieldRequest(
+        var createResponse = await client.PostAsJsonAsync("/api/v1/custom-fields", new SaveCustomFieldRequest(
             "client", "Shirt Size", CustomFieldType.Select, false, null, null, "Small,Medium,Large"));
         var field = await createResponse.Content.ReadFromJsonAsync<CustomFieldResponse>(TestJson.Options);
 
-        var response = await client.PostAsJsonAsync("/api/custom-fields/values", new CaptureCustomFieldValueRequest(
+        var response = await client.PostAsJsonAsync("/api/v1/custom-fields/values", new CaptureCustomFieldValueRequest(
             field!.Id, "Client", 99, "ExtraLarge"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -72,14 +72,14 @@ public class CustomFieldsControllerTests : IClassFixture<BCKashWebApplicationFac
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "customfield-upsert@bckash.test", "organization.manage");
 
-        var createResponse = await client.PostAsJsonAsync("/api/custom-fields", new SaveCustomFieldRequest(
+        var createResponse = await client.PostAsJsonAsync("/api/v1/custom-fields", new SaveCustomFieldRequest(
             "client", "Notes", CustomFieldType.Textfield, false, null, null, null));
         var field = await createResponse.Content.ReadFromJsonAsync<CustomFieldResponse>(TestJson.Options);
 
-        await client.PostAsJsonAsync("/api/custom-fields/values", new CaptureCustomFieldValueRequest(field!.Id, "Client", 7, "first value"));
-        await client.PostAsJsonAsync("/api/custom-fields/values", new CaptureCustomFieldValueRequest(field.Id, "Client", 7, "second value"));
+        await client.PostAsJsonAsync("/api/v1/custom-fields/values", new CaptureCustomFieldValueRequest(field!.Id, "Client", 7, "first value"));
+        await client.PostAsJsonAsync("/api/v1/custom-fields/values", new CaptureCustomFieldValueRequest(field.Id, "Client", 7, "second value"));
 
-        var listResponse = await client.GetAsync($"/api/custom-fields/values?entityType=Client&entityId=7");
+        var listResponse = await client.GetAsync($"/api/v1/custom-fields/values?entityType=Client&entityId=7");
         var values = await listResponse.Content.ReadFromJsonAsync<List<CustomFieldValueResponse>>();
 
         Assert.Single(values!);

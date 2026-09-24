@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/offices")]
+[Route("api/v1/offices")]
 [Authorize]
 public class OfficesController : ControllerBase
 {

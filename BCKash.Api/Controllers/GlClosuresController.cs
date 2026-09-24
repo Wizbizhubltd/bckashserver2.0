@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/gl/closures")]
+[Route("api/v1/gl/closures")]
 [Authorize]
 public class GlClosuresController : ControllerBase
 {

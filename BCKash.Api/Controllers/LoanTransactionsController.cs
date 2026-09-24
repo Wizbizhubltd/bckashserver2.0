@@ -13,7 +13,7 @@ namespace BCKash.Api.Controllers;
 /// LoanRepaymentsController's job, scoped to a single loan).
 /// </summary>
 [ApiController]
-[Route("api/loan-transactions")]
+[Route("api/v1/loan-transactions")]
 [Authorize]
 public class LoanTransactionsController : ControllerBase
 {

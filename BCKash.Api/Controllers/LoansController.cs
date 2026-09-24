@@ -15,7 +15,7 @@ namespace BCKash.Api.Controllers;
 /// Repayments/waivers/reschedule live in their own sub-resource controllers.
 /// </summary>
 [ApiController]
-[Route("api/loans")]
+[Route("api/v1/loans")]
 [Authorize]
 public class LoansController : ControllerBase
 {

@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/currencies")]
+[Route("api/v1/currencies")]
 [Authorize]
 public class CurrenciesController : ControllerBase
 {

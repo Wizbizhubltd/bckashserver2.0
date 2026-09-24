@@ -11,7 +11,7 @@ namespace BCKash.Api.Controllers;
 /// next calculation/posting date is actually due.
 /// </summary>
 [ApiController]
-[Route("api/savings-interest")]
+[Route("api/v1/savings-interest")]
 [Authorize]
 public class SavingsInterestController : ControllerBase
 {

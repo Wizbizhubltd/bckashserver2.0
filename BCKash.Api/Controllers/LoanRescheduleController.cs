@@ -10,7 +10,7 @@ namespace BCKash.Api.Controllers;
 
 /// <summary>FR-LN-23's reschedule request workflow.</summary>
 [ApiController]
-[Route("api/loans/{loanId:int}/reschedule-requests")]
+[Route("api/v1/loans/{loanId:int}/reschedule-requests")]
 [Authorize]
 public class LoanRescheduleController : ControllerBase
 {

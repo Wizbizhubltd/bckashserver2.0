@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 [ApiController]
-[Route("api/gl-accounts")]
+[Route("api/v1/gl-accounts")]
 [Authorize]
 public class GlAccountsController : ControllerBase
 {

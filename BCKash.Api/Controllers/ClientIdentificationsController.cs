@@ -13,7 +13,7 @@ namespace BCKash.Api.Controllers;
 /// extended to writes since there's no state machine or cross-entity invariant here to guard.
 /// </summary>
 [ApiController]
-[Route("api/clients/{clientId:int}/identifications")]
+[Route("api/v1/clients/{clientId:int}/identifications")]
 [Authorize]
 public class ClientIdentificationsController : ControllerBase
 {

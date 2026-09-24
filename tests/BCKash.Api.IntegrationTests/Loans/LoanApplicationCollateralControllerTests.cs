@@ -35,7 +35,7 @@ public class LoanApplicationCollateralControllerTests : IClassFixture<BCKashWebA
 
     private static async Task<int> CreateProductAsync(HttpClient client, string name)
     {
-        var response = await client.PostAsJsonAsync("/api/loan-products", NewProductRequest(name));
+        var response = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest(name));
         var created = await response.Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -46,7 +46,7 @@ public class LoanApplicationCollateralControllerTests : IClassFixture<BCKashWebA
             null, null, null, null, null, null, null, label, null, "Client", $"{label} Client",
             null, $"{label} Client", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var response = await client.PostAsJsonAsync("/api/clients", request);
+        var response = await client.PostAsJsonAsync("/api/v1/clients", request);
         var created = await response.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -54,7 +54,7 @@ public class LoanApplicationCollateralControllerTests : IClassFixture<BCKashWebA
     private static async Task<int> CreateApplicationAsync(HttpClient client, int productId, int clientId)
     {
         var request = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, clientId, null, productId, 5000, 12, FrequencyType.Months, null);
-        var response = await client.PostAsJsonAsync("/api/loan-applications", request);
+        var response = await client.PostAsJsonAsync("/api/v1/loan-applications", request);
         var created = await response.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         return created!.Id;
     }
@@ -68,7 +68,7 @@ public class LoanApplicationCollateralControllerTests : IClassFixture<BCKashWebA
         var clientId = await CreateClientAsync(client, "CollateralApplicant");
         var applicationId = await CreateApplicationAsync(client, productId, clientId);
 
-        var createResponse = await client.PostAsJsonAsync($"/api/loan-applications/{applicationId}/collateral",
+        var createResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{applicationId}/collateral",
             new SaveCollateralRequest(null, null, "Toyota Camry", "VIN12345", 3000, "2018 sedan"));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<CollateralResponse>(TestJson.Options);
@@ -76,12 +76,12 @@ public class LoanApplicationCollateralControllerTests : IClassFixture<BCKashWebA
         Assert.Equal(applicationId, created.LoanApplicationId);
         Assert.Null(created.LoanId);
 
-        var listResponse = await client.GetFromJsonAsync<List<CollateralResponse>>($"/api/loan-applications/{applicationId}/collateral", TestJson.Options);
+        var listResponse = await client.GetFromJsonAsync<List<CollateralResponse>>($"/api/v1/loan-applications/{applicationId}/collateral", TestJson.Options);
         Assert.Single(listResponse!);
 
-        await client.PostAsJsonAsync($"/api/loan-applications/{applicationId}/approve", new ApproveLoanApplicationRequest(4500, null));
+        await client.PostAsJsonAsync($"/api/v1/loan-applications/{applicationId}/approve", new ApproveLoanApplicationRequest(4500, null));
 
-        var afterApproval = await client.GetFromJsonAsync<List<CollateralResponse>>($"/api/loan-applications/{applicationId}/collateral", TestJson.Options);
+        var afterApproval = await client.GetFromJsonAsync<List<CollateralResponse>>($"/api/v1/loan-applications/{applicationId}/collateral", TestJson.Options);
         Assert.Single(afterApproval!);
     }
 
@@ -90,7 +90,7 @@ public class LoanApplicationCollateralControllerTests : IClassFixture<BCKashWebA
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "collateral-404@bckash.test", "loan-applications.manage");
 
-        var response = await client.GetAsync("/api/loan-applications/999999/collateral");
+        var response = await client.GetAsync("/api/v1/loan-applications/999999/collateral");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

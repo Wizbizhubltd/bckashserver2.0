@@ -25,16 +25,16 @@ public class ExpenseRecurringGenerationTests : IClassFixture<BCKashWebApplicatio
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "expense-recurring@bckash.test", ["expenses.manage"]);
 
         var dueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1); // already due
-        var created = await (await client.PostAsJsonAsync("/api/expenses", new SaveExpenseRequest(
+        var created = await (await client.PostAsJsonAsync("/api/v1/expenses", new SaveExpenseRequest(
             null, null, "Monthly rent", 10_000m, dueDate, true, "1", dueDate, null, ExpenseRecurType.Month, null, null)))
             .Content.ReadFromJsonAsync<ExpenseResponse>(TestJson.Options);
 
-        var beforeCount = (await client.GetFromJsonAsync<PagedResult<ExpenseResponse>>("/api/expenses?pageSize=100", TestJson.Options))!.TotalCount;
+        var beforeCount = (await client.GetFromJsonAsync<PagedResult<ExpenseResponse>>("/api/v1/expenses?pageSize=100", TestJson.Options))!.TotalCount;
 
-        var runResponse = await client.PostAsync("/api/expenses/run-recurring", content: null);
+        var runResponse = await client.PostAsync("/api/v1/expenses/run-recurring", content: null);
         Assert.True(runResponse.IsSuccessStatusCode);
 
-        var afterList = await client.GetFromJsonAsync<PagedResult<ExpenseResponse>>("/api/expenses?pageSize=100", TestJson.Options);
+        var afterList = await client.GetFromJsonAsync<PagedResult<ExpenseResponse>>("/api/v1/expenses?pageSize=100", TestJson.Options);
         Assert.Equal(beforeCount + 1, afterList!.TotalCount);
 
         var occurrence = afterList.Items.Single(e => e.Id != created!.Id);
@@ -46,8 +46,8 @@ public class ExpenseRecurringGenerationTests : IClassFixture<BCKashWebApplicatio
         Assert.Equal(dueDate.AddMonths(1), template.RecurNextDate);
 
         // Running again immediately produces no further occurrences — nothing else is due yet.
-        await client.PostAsync("/api/expenses/run-recurring", content: null);
-        var unchanged = await client.GetFromJsonAsync<PagedResult<ExpenseResponse>>("/api/expenses?pageSize=100", TestJson.Options);
+        await client.PostAsync("/api/v1/expenses/run-recurring", content: null);
+        var unchanged = await client.GetFromJsonAsync<PagedResult<ExpenseResponse>>("/api/v1/expenses?pageSize=100", TestJson.Options);
         Assert.Equal(afterList.TotalCount, unchanged!.TotalCount);
     }
 }

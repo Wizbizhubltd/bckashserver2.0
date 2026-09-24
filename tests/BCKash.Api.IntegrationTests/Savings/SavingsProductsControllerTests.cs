@@ -33,7 +33,7 @@ public class SavingsProductsControllerTests : IClassFixture<BCKashWebApplication
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-product-crud@bckash.test", "savings-products.manage");
 
-        var response = await client.PostAsJsonAsync("/api/savings-products", ProductRequest("Regular Savings"));
+        var response = await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest("Regular Savings"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
@@ -46,13 +46,13 @@ public class SavingsProductsControllerTests : IClassFixture<BCKashWebApplication
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-product-deactivate@bckash.test", "savings-products.manage");
 
-        var created = await (await client.PostAsJsonAsync("/api/savings-products", ProductRequest("Deactivate Me")))
+        var created = await (await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest("Deactivate Me")))
             .Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
 
-        var deactivated = await (await client.PostAsync($"/api/savings-products/{created!.Id}/deactivate", null)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var deactivated = await (await client.PostAsync($"/api/v1/savings-products/{created!.Id}/deactivate", null)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         Assert.False(deactivated!.Active);
 
-        var reactivated = await (await client.PostAsync($"/api/savings-products/{created.Id}/activate", null)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var reactivated = await (await client.PostAsync($"/api/v1/savings-products/{created.Id}/activate", null)).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
         Assert.True(reactivated!.Active);
     }
 
@@ -61,17 +61,17 @@ public class SavingsProductsControllerTests : IClassFixture<BCKashWebApplication
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "savings-product-inuse@bckash.test", ["savings-products.manage", "savings-accounts.manage", "clients.manage"]);
 
-        var product = await (await client.PostAsJsonAsync("/api/savings-products", ProductRequest("In Use Product"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
+        var product = await (await client.PostAsJsonAsync("/api/v1/savings-products", ProductRequest("In Use Product"))).Content.ReadFromJsonAsync<SavingsProductResponse>(TestJson.Options);
 
         var clientRequest = new CreateClientRequest(
             null, null, null, null, null, null, null, "SavProd", null, "Borrower", "SavProd Borrower",
             null, "SavProd Borrower", null, null, null, null, null, ClientType.Individual, null, null,
             null, null, null, null, null, null, null, null, null, null, null);
-        var borrower = await (await client.PostAsJsonAsync("/api/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
+        var borrower = await (await client.PostAsJsonAsync("/api/v1/clients", clientRequest)).Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
 
-        await client.PostAsJsonAsync("/api/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, borrower!.Id, null, null, product!.Id, null));
+        await client.PostAsJsonAsync("/api/v1/savings-accounts", new OpenSavingsAccountRequest(SavingsClientType.Client, borrower!.Id, null, null, product!.Id, null));
 
-        var deleteResponse = await client.DeleteAsync($"/api/savings-products/{product.Id}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/savings-products/{product.Id}");
         Assert.Equal(HttpStatusCode.Conflict, deleteResponse.StatusCode);
     }
 }
