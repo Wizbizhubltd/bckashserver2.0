@@ -40,7 +40,7 @@ USER appuser
 
 COPY --from=build --chown=appuser:appuser /app/publish .
 
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:4000
+EXPOSE 4000
 
 ENTRYPOINT ["dotnet", "BCKash.Api.dll"]

@@ -46,7 +46,7 @@ services:
       ConnectionStrings__BCKashDb: "Server=db;Port=3306;Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
       ConnectionStrings__Redis: "redis:6379,password=${REDIS_PASSWORD}"
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${API_PORT:-4000}:4000"
     depends_on:
       db:
         condition: service_healthy
