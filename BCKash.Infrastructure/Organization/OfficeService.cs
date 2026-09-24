@@ -3,6 +3,7 @@ using BCKash.Domain.Clients;
 using BCKash.Domain.Loans;
 using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
+using BCKash.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace BCKash.Infrastructure.Organization;
@@ -23,14 +24,27 @@ public class OfficeService : IOfficeService
     ];
 
     private readonly BCKashDbContext _db;
+    private readonly ICurrentUserContext _currentUser;
 
-    public OfficeService(BCKashDbContext db)
+    public OfficeService(BCKashDbContext db, ICurrentUserContext currentUser)
     {
         _db = db;
+        _currentUser = currentUser;
     }
 
     public async Task<OfficeWriteResult> CreateAsync(Office office, CancellationToken cancellationToken = default)
     {
+        var locationFailure = await ValidateLocationAsync(office, cancellationToken);
+        if (locationFailure is not null)
+        {
+            return new OfficeWriteResult(locationFailure.Value);
+        }
+
+        office.OfficeCode = await OfficeCodeGenerator.GenerateUniqueAsync(_db, cancellationToken);
+        office.CreatedById = _currentUser.UserId;
+        office.CreatedAt = DateTime.UtcNow;
+        office.UpdatedAt = office.CreatedAt;
+
         _db.Offices.Add(office);
         await _db.SaveChangesAsync(cancellationToken);
         return new OfficeWriteResult(OfficeWriteOutcome.Success, office);
@@ -49,6 +63,12 @@ public class OfficeService : IOfficeService
             return new OfficeWriteResult(OfficeWriteOutcome.CircularParent);
         }
 
+        var locationFailure = await ValidateLocationAsync(updated, cancellationToken);
+        if (locationFailure is not null)
+        {
+            return new OfficeWriteResult(locationFailure.Value);
+        }
+
         office.Name = updated.Name;
         office.ParentId = updated.ParentId;
         office.ExternalId = updated.ExternalId;
@@ -59,6 +79,11 @@ public class OfficeService : IOfficeService
         office.Notes = updated.Notes;
         office.ManagerId = updated.ManagerId;
         office.DefaultOffice = updated.DefaultOffice;
+        office.StateId = updated.StateId;
+        office.LgaId = updated.LgaId;
+        office.CityId = updated.CityId;
+        office.ZoneId = updated.ZoneId;
+        office.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);
         return new OfficeWriteResult(OfficeWriteOutcome.Success, office);
@@ -132,5 +157,23 @@ public class OfficeService : IOfficeService
         }
 
         return false;
+    }
+
+    /// <summary>Null when the office's state/LGA/city/zone are all set and consistent with each other.</summary>
+    private async Task<OfficeWriteOutcome?> ValidateLocationAsync(Office office, CancellationToken cancellationToken)
+    {
+        if (office.StateId is null || office.LgaId is null || office.CityId is null || office.ZoneId is null)
+        {
+            return OfficeWriteOutcome.LocationRequired;
+        }
+
+        var lgaInState = await _db.Lgas.AnyAsync(l => l.Id == office.LgaId && l.StateId == office.StateId, cancellationToken);
+        var cityInLga = await _db.Cities.AnyAsync(c => c.Id == office.CityId && c.LgaId == office.LgaId, cancellationToken);
+        if (!lgaInState || !cityInLga)
+        {
+            return OfficeWriteOutcome.InvalidLocation;
+        }
+
+        return await _db.Zones.AnyAsync(z => z.Id == office.ZoneId, cancellationToken) ? null : OfficeWriteOutcome.ZoneNotFound;
     }
 }

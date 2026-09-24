@@ -136,6 +136,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ILoginThrottleService, LoginThrottleService>();
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IActiveSessionChecker, ActiveSessionChecker>();
         services.AddScoped<IOfficeService, OfficeService>();
         services.AddScoped<IClientService, ClientService>();
         services.AddScoped<IFileStorageService, LocalDiskFileStorageService>();

@@ -23,6 +23,12 @@ public class OfficeConfiguration : IEntityTypeConfiguration<Office>
         builder.Property(o => o.ManagerId).HasColumnName("manager_id");
         builder.Property(o => o.Active).HasColumnName("active");
         builder.Property(o => o.DefaultOffice).HasColumnName("default_office");
+        builder.Property(o => o.OfficeCode).HasColumnName("office_code").HasMaxLength(20);
+        builder.Property(o => o.StateId).HasColumnName("state_id");
+        builder.Property(o => o.LgaId).HasColumnName("lga_id");
+        builder.Property(o => o.CityId).HasColumnName("city_id");
+        builder.Property(o => o.ZoneId).HasColumnName("zone_id");
+        builder.Property(o => o.CreatedById).HasColumnName("created_by_id");
         builder.Property(o => o.CreatedAt).HasColumnName("created_at");
         builder.Property(o => o.UpdatedAt).HasColumnName("updated_at");
         builder.Property(o => o.DeletedAt).HasColumnName("deleted_at");
@@ -32,5 +38,12 @@ public class OfficeConfiguration : IEntityTypeConfiguration<Office>
             .HasForeignKey(o => o.ParentId)
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired(false);
+
+        builder.HasIndex(o => o.OfficeCode).IsUnique().HasDatabaseName("offices_office_code_unique");
+
+        builder.HasOne(o => o.State).WithMany().HasForeignKey(o => o.StateId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne(o => o.Lga).WithMany().HasForeignKey(o => o.LgaId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne(o => o.City).WithMany().HasForeignKey(o => o.CityId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne(o => o.Zone).WithMany().HasForeignKey(o => o.ZoneId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
     }
 }

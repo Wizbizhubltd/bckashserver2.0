@@ -25,8 +25,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-crud@bckash.test", "organization.manage");
 
-        var response = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest(
-            "Head Office", null, null, null, null, null, null, null, null, true));
+        var response = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Head Office", null, true));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<OfficeResponse>();
@@ -38,15 +37,15 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-cycle@bckash.test", "organization.manage");
 
-        var parentResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Parent", null, null, null, null, null, null, null, null, false));
+        var parentResponse = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Parent", null, false));
         var parent = await parentResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
-        var childResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Child", parent!.Id, null, null, null, null, null, null, null, false));
+        var childResponse = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Child", parent!.Id, false));
         var child = await childResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         // Try to make Parent a child of its own child — a direct cycle.
         var cycleResponse = await client.PutAsJsonAsync($"/api/v1/offices/{parent.Id}",
-            new SaveOfficeRequest("Parent", child!.Id, null, null, null, null, null, null, null, false));
+            await OfficeRequestAsync("Parent", child!.Id, false));
 
         Assert.Equal(HttpStatusCode.BadRequest, cycleResponse.StatusCode);
     }
@@ -56,7 +55,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-deactivate@bckash.test", "organization.manage");
 
-        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Busy Branch", null, null, null, null, null, null, null, null, false));
+        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Busy Branch", null, false));
         var office = await officeResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         using (var scope = _factory.Services.CreateScope())
@@ -92,7 +91,7 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-deactivate-loan@bckash.test", "organization.manage");
 
-        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Loan Branch", null, null, null, null, null, null, null, null, false));
+        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Loan Branch", null, false));
         var office = await officeResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         using (var scope = _factory.Services.CreateScope())
@@ -113,10 +112,19 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-deactivate-empty@bckash.test", "organization.manage");
 
-        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", new SaveOfficeRequest("Quiet Branch", null, null, null, null, null, null, null, null, false));
+        var officeResponse = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Quiet Branch", null, false));
         var office = await officeResponse.Content.ReadFromJsonAsync<OfficeResponse>();
 
         var response = await client.PostAsync($"/api/v1/offices/{office!.Id}/deactivate", null);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private async Task<SaveOfficeRequest> OfficeRequestAsync(string name, int? parentId, bool defaultOffice)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var location = await TestDataSeeder.SeedOfficeLocationAsync(scope.ServiceProvider.GetRequiredService<BCKashDbContext>());
+        return new SaveOfficeRequest(
+            name, parentId, null, null, null, null, null, null, null, defaultOffice,
+            location.StateId, location.LgaId, location.CityId, location.ZoneId);
     }
 }

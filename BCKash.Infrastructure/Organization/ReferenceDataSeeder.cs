@@ -10,7 +10,8 @@ namespace BCKash.Infrastructure.Organization;
 /// Seeds reference data at startup — idempotent (NFR-10): each table is only seeded if
 /// currently empty, so this is safe to run on every boot. No legacy data rows exist to
 /// migrate (see Phase 1 plan notes), so this seeds what's honestly seedable: the full
-/// ISO-3166 country list (genuine, universal reference data), and a small set of
+/// ISO-3166 country list (genuine, universal reference data), Nigeria's states and LGAs
+/// (see <see cref="NigeriaLocationSeedData"/>), and a small set of
 /// clearly-labeled sensible defaults for Currencies/PaymentTypes — NOT presented as
 /// migrated legacy data, just enough for the system to be usable out of the box.
 /// </summary>
@@ -46,7 +47,24 @@ public class ReferenceDataSeeder : IHostedService
                 new PaymentType { Name = "Bank Transfer", IsCash = false });
         }
 
+        if (!await db.States.AnyAsync(cancellationToken))
+        {
+            db.States.AddRange(NigeriaLocationSeedData.States.Select(s => new State
+            {
+                Name = s.Name,
+                Lgas = s.Lgas.Select(lga => new Lga { Name = lga }).ToList(),
+            }));
+        }
+
         await db.SaveChangesAsync(cancellationToken);
+
+        // Offices created before office codes existed get one on the next boot.
+        var officesWithoutCode = await db.Offices.IgnoreQueryFilters().Where(o => o.OfficeCode == null).ToListAsync(cancellationToken);
+        foreach (var office in officesWithoutCode)
+        {
+            office.OfficeCode = await OfficeCodeGenerator.GenerateUniqueAsync(db, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

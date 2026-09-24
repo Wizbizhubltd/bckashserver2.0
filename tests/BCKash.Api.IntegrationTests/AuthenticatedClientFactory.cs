@@ -26,4 +26,19 @@ public static class AuthenticatedClientFactory
 
         return client;
     }
+
+    /// <summary>A signed-in super admin (user_type super_admin), for endpoints guarded by the SuperAdmin policy.</summary>
+    public static async Task<HttpClient> CreateSuperAdminAsync(BCKashWebApplicationFactory factory, string email)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+        var user = await TestDataSeeder.SeedUserAsync(db, email, "Correct-Password1!", permissionSlug: "organization.manage");
+        await TestDataSeeder.MakeSuperAdminAsync(db, user);
+
+        var client = factory.CreateClient();
+        var tokens = await LoginTestHelper.LoginAndVerifyOtpAsync(factory, client, user.Email, "Correct-Password1!");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+
+        return client;
+    }
 }

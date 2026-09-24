@@ -18,9 +18,24 @@ public class Office : IHasTimestamps, ISoftDelete, IAuditable
     public bool Active { get; set; } = true;
     public bool DefaultOffice { get; set; }
 
+    /// <summary>Generated once on creation (see <see cref="OfficeCodeFormat"/>) and never edited.</summary>
+    public string? OfficeCode { get; set; }
+
+    // Nullable because offices created before these fields existed have none; the API requires
+    // all four whenever an office is created or edited.
+    public int? StateId { get; set; }
+    public int? LgaId { get; set; }
+    public int? CityId { get; set; }
+    public int? ZoneId { get; set; }
+    public int? CreatedById { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
 
     public Office? Parent { get; set; }
+    public State? State { get; set; }
+    public Lga? Lga { get; set; }
+    public City? City { get; set; }
+    public Zone? Zone { get; set; }
 }

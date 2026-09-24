@@ -7,14 +7,46 @@ namespace BCKash.Api.Contracts;
 public record OfficeResponse(
     int Id, string? Name, int? ParentId, string? ExternalId, DateOnly? OpeningDate,
     string? Address, string? Phone, string? Email, string? Notes, int? ManagerId,
-    bool Active, bool DefaultOffice);
+    bool Active, bool DefaultOffice,
+    string? OfficeCode, string? ParentName,
+    int? StateId, string? StateName, int? LgaId, string? LgaName, int? CityId, string? CityName,
+    int? ZoneId, string? ZoneName,
+    int StaffCount, DateTime? CreatedAt, int? CreatedById, string? CreatedByName);
 
+/// <summary>StateId, LgaId, CityId and ZoneId are required; the office code is generated and can't be set.</summary>
 public record SaveOfficeRequest(
     string? Name, int? ParentId, string? ExternalId, DateOnly? OpeningDate,
     string? Address, string? Phone, string? Email, string? Notes, int? ManagerId,
-    bool DefaultOffice);
+    bool DefaultOffice,
+    int? StateId = null, int? LgaId = null, int? CityId = null, int? ZoneId = null);
+
+/// <summary>Head office = the office flagged DefaultOffice; every other office is a branch.</summary>
+public enum OfficeTypeFilter
+{
+    Head,
+    Branch,
+}
 
 public record OfficeInUseResponse(int ActiveClientCount, int OpenLoanCount);
+
+// ---- Zones ----
+
+/// <summary>OfficeCount/StaffCount: offices in the zone and staff assigned to those offices — a zone with staff can't be deleted.</summary>
+public record ZoneResponse(
+    int Id, string Name, string? Description, int OfficeCount, int StaffCount,
+    DateTime? CreatedAt, int? CreatedById, string? CreatedByName);
+
+public record SaveZoneRequest(string Name, string? Description);
+
+// ---- Locations (states, LGAs, cities) ----
+
+public record StateResponse(int Id, string Name);
+
+public record LgaResponse(int Id, int StateId, string Name);
+
+public record CityResponse(int Id, string Name, int LgaId, string LgaName, int StateId, string StateName, int OfficeCount);
+
+public record SaveCityRequest(int LgaId, string Name);
 
 // ---- Currencies ----
 

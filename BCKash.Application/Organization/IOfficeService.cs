@@ -8,6 +8,13 @@ public enum OfficeWriteOutcome
     NotFound,
     CircularParent,
     InUseConfirmationRequired,
+
+    /// <summary>State, LGA, city or zone is missing.</summary>
+    LocationRequired,
+
+    /// <summary>The LGA isn't in the chosen state, the city isn't in the chosen LGA, or one of them doesn't exist.</summary>
+    InvalidLocation,
+    ZoneNotFound,
 }
 
 public record OfficeInUseCounts(int ActiveClientCount, int OpenLoanCount);
@@ -22,6 +29,7 @@ public record OfficeWriteResult(OfficeWriteOutcome Outcome, Office? Office = nul
 /// </summary>
 public interface IOfficeService
 {
+    /// <summary>Also generates the office's <see cref="Office.OfficeCode"/> and records who created it and when.</summary>
     Task<OfficeWriteResult> CreateAsync(Office office, CancellationToken cancellationToken = default);
 
     /// <summary>Applies <paramref name="updated"/>'s editable fields onto the stored office with <paramref name="id"/>.</summary>

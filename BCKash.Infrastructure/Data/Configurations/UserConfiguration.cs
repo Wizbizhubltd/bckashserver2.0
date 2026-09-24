@@ -72,6 +72,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.OnboardingDeclinedDate).HasColumnName("onboarding_declined_date").HasColumnType("date");
         builder.Property(u => u.OnboardingDeclinedReason).HasColumnName("onboarding_declined_reason");
 
+        builder.Property(u => u.MustChangePassword).HasColumnName("must_change_password");
+        builder.Property(u => u.ActiveSessionId).HasColumnName("active_session_id").HasMaxLength(64);
+        builder.Property(u => u.ActiveDeviceId).HasColumnName("active_device_id").HasMaxLength(128);
+
         builder.Property(u => u.CreatedAt).HasColumnName("created_at");
         builder.Property(u => u.UpdatedAt).HasColumnName("updated_at");
 

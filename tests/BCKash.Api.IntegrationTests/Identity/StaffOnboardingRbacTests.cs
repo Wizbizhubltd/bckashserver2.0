@@ -5,6 +5,7 @@ using BCKash.Api.Contracts;
 using BCKash.Application.Communications;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Communications;
+using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,7 +87,14 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
         Assert.Equal("new-hire@bckash.test", newHireMe!.Email);
 
         // --- Super admin can assign staff to an office (existing office CRUD + new assign-office action). ---
-        var office = await (await superAdminClient.PostAsJsonAsync("/api/v1/offices", new { Name = "HQ" })).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
+        OfficeLocation location;
+        using (var scope = factory.Services.CreateScope())
+        {
+            location = await TestDataSeeder.SeedOfficeLocationAsync(scope.ServiceProvider.GetRequiredService<BCKashDbContext>());
+        }
+
+        var officeRequest = new { Name = "HQ", location.StateId, location.LgaId, location.CityId, location.ZoneId };
+        var office = await (await superAdminClient.PostAsJsonAsync("/api/v1/offices", officeRequest)).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
         var assignResponse = await superAdminClient.PostAsJsonAsync($"/api/v1/users/{newHire.Id}/assign-office", new AssignOfficeRequest(office!.Id));
         Assert.True(assignResponse.IsSuccessStatusCode);
         var assigned = await assignResponse.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
@@ -109,11 +117,24 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
         return match.Groups[1].Value;
     }
 
+    // Staff onboarded by someone else start with a temporary password they must replace before the
+    // API lets them do anything else — the bootstrapped super admin is the only one exempt.
     private static async Task<HttpClient> LoginAsync(WebApplicationFactory<Program> factory, string email, string password)
     {
         var client = factory.CreateClient();
         var tokens = await LoginTestHelper.LoginAndVerifyOtpAsync(factory, client, email, password);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+        var accessToken = tokens.AccessToken;
+
+        Assert.Equal(email != "superadmin@bootstrap.test", tokens.UserData.MustChangePassword);
+        if (tokens.UserData.MustChangePassword)
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            var changeResponse = await client.PostAsJsonAsync("/api/v1/auth/password/change", new ChangePasswordRequest(password, "Changed-Password1!"));
+            Assert.True(changeResponse.IsSuccessStatusCode, await changeResponse.Content.ReadAsStringAsync());
+            accessToken = (await changeResponse.Content.ReadFromJsonAsync<ChangePasswordResponse>())!.AccessToken;
+        }
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         return client;
     }
 

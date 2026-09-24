@@ -4,6 +4,7 @@ using BCKash.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BCKash.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(BCKashDbContext))]
-    partial class BCKashDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924171215_OfficeLocationsZonesAndSessions")]
+    partial class OfficeLocationsZonesAndSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

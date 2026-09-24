@@ -21,7 +21,7 @@ public class JwtTokenService : IJwtTokenService
         _settings = settings.Value;
     }
 
-    public AccessToken GenerateAccessToken(User user, IReadOnlyCollection<string> permissionSlugs)
+    public AccessToken GenerateAccessToken(User user, IReadOnlyCollection<string> permissionSlugs, string? userType, string sessionId)
     {
         var expiresAt = DateTime.UtcNow.AddMinutes(_settings.AccessTokenMinutes);
 
@@ -30,14 +30,25 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
+            new(AuthClaimTypes.SessionId, sessionId),
         };
 
         if (user.OfficeId.HasValue)
         {
-            claims.Add(new Claim("office_id", user.OfficeId.Value.ToString()));
+            claims.Add(new Claim(AuthClaimTypes.OfficeId, user.OfficeId.Value.ToString()));
         }
 
-        claims.AddRange(permissionSlugs.Select(slug => new Claim("permission", slug)));
+        if (userType is not null)
+        {
+            claims.Add(new Claim(AuthClaimTypes.UserType, userType));
+        }
+
+        if (user.MustChangePassword)
+        {
+            claims.Add(new Claim(AuthClaimTypes.PasswordChangeRequired, "true"));
+        }
+
+        claims.AddRange(permissionSlugs.Select(slug => new Claim(AuthClaimTypes.Permission, slug)));
 
         var token = CreateToken(claims, expiresAt);
         return new AccessToken(token, expiresAt);

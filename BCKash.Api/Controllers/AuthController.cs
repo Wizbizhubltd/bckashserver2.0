@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using BCKash.Api.Contracts;
 using BCKash.Application.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BCKash.Api.Controllers;
@@ -38,7 +40,7 @@ public class AuthController : ControllerBase
     [HttpPost("login/2fa")]
     public async Task<IActionResult> VerifyTwoFactor(TwoFactorRequest request, CancellationToken cancellationToken)
     {
-        var result = await _authService.VerifyTwoFactorAsync(request.ChallengeToken, request.Code, cancellationToken);
+        var result = await _authService.VerifyTwoFactorAsync(request.ChallengeToken, request.Code, request.DeviceId, cancellationToken);
 
         return result.Outcome switch
         {
@@ -52,7 +54,7 @@ public class AuthController : ControllerBase
     [HttpPost("login/otp/verify")]
     public async Task<IActionResult> VerifyLoginOtp(OtpVerifyRequest request, CancellationToken cancellationToken)
     {
-        var result = await _authService.VerifyLoginOtpAsync(request.ChallengeToken, request.Code, cancellationToken);
+        var result = await _authService.VerifyLoginOtpAsync(request.ChallengeToken, request.Code, request.DeviceId, cancellationToken);
 
         return result.Outcome switch
         {
@@ -60,16 +62,28 @@ public class AuthController : ControllerBase
                 result.AccessToken!.Token,
                 result.AccessToken.ExpiresAtUtc,
                 result.RefreshToken!,
-                new UserDataResponse(
-                    result.UserData!.UserId,
-                    result.UserData.FullName,
-                    result.UserData.Email,
-                    result.UserData.PhoneNumber,
-                    result.UserData.UserClass,
-                    result.UserData.UserType))),
+                ToResponse(result.UserData!))),
             OtpVerifyOutcomeType.InvalidChallenge => Problem(title: "Invalid or expired OTP challenge", statusCode: StatusCodes.Status401Unauthorized),
             OtpVerifyOutcomeType.InvalidCode => Problem(title: "Invalid OTP code", statusCode: StatusCodes.Status401Unauthorized),
             OtpVerifyOutcomeType.TooManyAttempts => Problem(title: "Too many incorrect attempts — request a new code", statusCode: StatusCodes.Status429TooManyRequests),
+            _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    /// <summary>
+    /// Sends a new login code for a pending OTP challenge and invalidates the previous code.
+    /// Returns a new challenge token — the client must use it for the verify call from then on.
+    /// </summary>
+    [HttpPost("login/otp/resend")]
+    public async Task<IActionResult> ResendLoginOtp(OtpResendRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _authService.ResendLoginOtpAsync(request.ChallengeToken, cancellationToken);
+
+        return result.Outcome switch
+        {
+            OtpResendOutcomeType.Resent => Ok(new OtpChallengeResponse(result.ChallengeToken!)),
+            OtpResendOutcomeType.InvalidChallenge => Problem(title: "Your sign-in session has expired — sign in again", statusCode: StatusCodes.Status401Unauthorized),
+            OtpResendOutcomeType.TooSoon => Problem(title: "A code was sent recently — wait a minute before requesting another", statusCode: StatusCodes.Status429TooManyRequests),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
     }
@@ -107,6 +121,33 @@ public class AuthController : ControllerBase
         };
     }
 
+    /// <summary>
+    /// Changes the signed-in user's own password. This is the one call allowed while a temporary
+    /// password still has to be replaced. Returns new tokens for the same session.
+    /// </summary>
+    [HttpPost("password/change")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _authService.ChangePasswordAsync(userId, request.CurrentPassword, request.NewPassword, cancellationToken);
+
+        return result.Outcome switch
+        {
+            PasswordChangeOutcomeType.Success => Ok(new ChangePasswordResponse(
+                result.AccessToken!.Token, result.AccessToken.ExpiresAtUtc, result.RefreshToken!, ToResponse(result.UserData!))),
+            PasswordChangeOutcomeType.NotFound => Unauthorized(),
+            PasswordChangeOutcomeType.InvalidCurrentPassword => Problem(title: "Current password is incorrect", statusCode: StatusCodes.Status400BadRequest),
+            PasswordChangeOutcomeType.WeakPassword => Problem(title: "Password must be at least 8 characters", statusCode: StatusCodes.Status400BadRequest),
+            PasswordChangeOutcomeType.SameAsCurrent => Problem(title: "The new password must be different from the current one", statusCode: StatusCodes.Status400BadRequest),
+            _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(RefreshRequest request, CancellationToken cancellationToken)
     {
@@ -119,4 +160,7 @@ public class AuthController : ControllerBase
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
     }
+
+    private static UserDataResponse ToResponse(UserLoginData data) =>
+        new(data.UserId, data.FullName, data.Email, data.PhoneNumber, data.UserClass, data.UserType, data.MustChangePassword);
 }

@@ -62,6 +62,9 @@ public class UserService : IUserService
         newUser.PasswordHash = _passwordHasher.Hash(temporaryPassword);
         newUser.CreatedById = actingUserId;
 
+        // Everyone but a super admin must replace the emailed temporary password on first sign-in.
+        newUser.MustChangePassword = userTypeSlug != UserTypeSlugs.SuperAdmin;
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         if (actingIsSuperAdmin)
         {
@@ -259,6 +262,9 @@ public class UserService : IUserService
 
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         user.PasswordHash = _passwordHasher.Hash(temporaryPassword);
+
+        // Same rule as a new account: the emailed temporary password must be replaced on next sign-in.
+        user.MustChangePassword = !await IsSuperAdminAsync(user.Id, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         await SendCredentialsEmailAsync(user, temporaryPassword, cancellationToken, isReset: true);

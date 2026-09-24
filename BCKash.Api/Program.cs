@@ -101,12 +101,14 @@ builder.Services
                     .LogWarning(context.Exception, "JWT authentication failed");
                 return Task.CompletedTask;
             },
+            OnTokenValidated = SessionEnforcement.RejectReplacedSessionAsync,
+            OnChallenge = SessionEnforcement.ExplainReplacedSessionAsync,
         };
     });
 
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options => options.AddBCKashPolicies());
 
 var app = builder.Build();
 
@@ -136,6 +138,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(SpaDevCorsPolicy);
 app.UseAuthentication();
+app.Use(SessionEnforcement.RequirePasswordChangeFirstAsync);
 app.UseAuthorization();
 
 app.MapControllers();

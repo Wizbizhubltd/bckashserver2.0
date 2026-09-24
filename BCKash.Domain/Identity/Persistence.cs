@@ -12,6 +12,12 @@ public class Persistence
     public int UserId { get; set; }
     public string Code { get; set; } = string.Empty;
 
+    /// <summary>The sign-in session this refresh token belongs to — see <see cref="User.ActiveSessionId"/>.</summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>The client-generated id of the device that signed in.</summary>
+    public string? DeviceId { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

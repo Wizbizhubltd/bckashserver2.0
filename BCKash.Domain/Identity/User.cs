@@ -52,6 +52,17 @@ public class User : IHasTimestamps, IAuditable
     public DateOnly? OnboardingDeclinedDate { get; set; }
     public string? OnboardingDeclinedReason { get; set; }
 
+    /// <summary>
+    /// Set when the account was given an emailed temporary password (new non-super-admin staff,
+    /// or an admin password reset). While set, the API only lets the user change their password.
+    /// </summary>
+    public bool MustChangePassword { get; set; }
+
+    // One active session per user: each new sign-in replaces these, and any access token whose
+    // session id no longer matches is rejected — so signing in on a second device signs the first out.
+    public string? ActiveSessionId { get; set; }
+    public string? ActiveDeviceId { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

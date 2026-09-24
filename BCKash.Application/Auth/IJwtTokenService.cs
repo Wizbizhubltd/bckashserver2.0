@@ -6,7 +6,9 @@ public record AccessToken(string Token, DateTime ExpiresAtUtc);
 
 public interface IJwtTokenService
 {
-    AccessToken GenerateAccessToken(User user, IReadOnlyCollection<string> permissionSlugs);
+    /// <param name="userType">The user's user_type slug, emitted as the <see cref="AuthClaimTypes.UserType"/> claim.</param>
+    /// <param name="sessionId">Emitted as the <see cref="AuthClaimTypes.SessionId"/> claim — see <see cref="IActiveSessionChecker"/>.</param>
+    AccessToken GenerateAccessToken(User user, IReadOnlyCollection<string> permissionSlugs, string? userType, string sessionId);
 
     /// <summary>
     /// Short-lived token issued after password verification for a user with

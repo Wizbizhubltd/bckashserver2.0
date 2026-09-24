@@ -13,6 +13,7 @@ public class AuthService : IAuthService
     private const int PasswordMinLength = 8;
     private static readonly TimeSpan PasswordResetOtpLifetime = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan PasswordResetCooldown = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan LoginOtpResendCooldown = TimeSpan.FromSeconds(60);
 
     private readonly BCKashDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
@@ -83,7 +84,7 @@ public class AuthService : IAuthService
         return new LoginResult(LoginOutcomeType.RequiresOtp, OtpChallengeToken: otpChallengeToken);
     }
 
-    public async Task<OtpVerifyResult> VerifyLoginOtpAsync(string challengeToken, string code, CancellationToken cancellationToken = default)
+    public async Task<OtpVerifyResult> VerifyLoginOtpAsync(string challengeToken, string code, string? deviceId, CancellationToken cancellationToken = default)
     {
         var claims = _jwtTokenService.ValidateLoginOtpChallengeToken(challengeToken);
         if (claims is null)
@@ -119,17 +120,48 @@ public class AuthService : IAuthService
         otp.ConsumedAtUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
-        var (accessToken, refreshToken) = await IssueTokensAsync(user, cancellationToken);
-        var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
-        var userData = new UserLoginData(
-            user.Id.ToString(),
-            $"{user.FirstName} {user.LastName}".Trim(),
-            user.Email,
-            user.Phone,
-            user.UserClass?.ToString(),
-            userType);
+        var (accessToken, refreshToken) = await StartSessionAsync(user, deviceId, cancellationToken);
+        var userData = await BuildUserDataAsync(user, cancellationToken);
 
         return new OtpVerifyResult(OtpVerifyOutcomeType.Success, accessToken, refreshToken, userData);
+    }
+
+    public async Task<OtpResendResult> ResendLoginOtpAsync(string challengeToken, CancellationToken cancellationToken = default)
+    {
+        var claims = _jwtTokenService.ValidateLoginOtpChallengeToken(challengeToken);
+        if (claims is null)
+        {
+            return new OtpResendResult(OtpResendOutcomeType.InvalidChallenge);
+        }
+
+        // An OTP locked by too many wrong attempts can still be replaced — that's exactly what the
+        // TooManyAttempts error tells the user to do — but a consumed one means the login finished
+        // (or the code was already superseded by an earlier resend).
+        var (userId, otpId) = claims.Value;
+        var otp = await _db.LoginOtps.FirstOrDefaultAsync(o => o.Id == otpId && o.UserId == userId, cancellationToken);
+        if (otp is null || otp.ConsumedAtUtc is not null)
+        {
+            return new OtpResendResult(OtpResendOutcomeType.InvalidChallenge);
+        }
+
+        // Re-check what LoginAsync checked, in case the account changed after the password step.
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null || user.Blocked || user.OnboardingStatus != UserOnboardingStatus.Approved)
+        {
+            return new OtpResendResult(OtpResendOutcomeType.InvalidChallenge);
+        }
+
+        // Every resend sends an SMS, so cap how often one account can trigger it.
+        var cooldownStart = DateTime.UtcNow - LoginOtpResendCooldown;
+        if (await _db.LoginOtps.AnyAsync(o => o.UserId == user.Id && o.CreatedAt > cooldownStart, cancellationToken))
+        {
+            return new OtpResendResult(OtpResendOutcomeType.TooSoon);
+        }
+
+        // Retire the old code so only the newest one sent can complete the login.
+        otp.ConsumedAtUtc = DateTime.UtcNow;
+        var newChallengeToken = await IssueLoginOtpAsync(user, cancellationToken);
+        return new OtpResendResult(OtpResendOutcomeType.Resent, newChallengeToken);
     }
 
     public async Task<PasswordResetRequestResult> RequestPasswordResetAsync(string email, string? ip, CancellationToken cancellationToken = default)
@@ -220,15 +252,20 @@ public class AuthService : IAuthService
         otp.ConsumedAtUtc = DateTime.UtcNow;
         user.PasswordHash = _passwordHasher.Hash(newPassword);
 
-        // Whoever prompted the reset may have been using a stolen session — revoke every refresh token.
+        // The user chose this password themselves, so any pending temporary-password change is done.
+        user.MustChangePassword = false;
+
+        // Whoever prompted the reset may have been using a stolen session — end it: revoke every
+        // refresh token, and clear the active session so outstanding access tokens stop working too.
         var sessions = await _db.Persistences.Where(p => p.UserId == user.Id).ToListAsync(cancellationToken);
         _db.Persistences.RemoveRange(sessions);
+        user.ActiveSessionId = null;
 
         await _db.SaveChangesAsync(cancellationToken);
         return new PasswordResetResult(PasswordResetOutcomeType.Success);
     }
 
-    public async Task<TwoFactorResult> VerifyTwoFactorAsync(string challengeToken, string totpCode, CancellationToken cancellationToken = default)
+    public async Task<TwoFactorResult> VerifyTwoFactorAsync(string challengeToken, string totpCode, string? deviceId, CancellationToken cancellationToken = default)
     {
         var userId = _jwtTokenService.ValidateTwoFactorChallengeToken(challengeToken);
         if (userId is null)
@@ -247,7 +284,7 @@ public class AuthService : IAuthService
             return new TwoFactorResult(TwoFactorOutcomeType.InvalidCode);
         }
 
-        var (accessToken, refreshToken) = await IssueTokensAsync(user, cancellationToken);
+        var (accessToken, refreshToken) = await StartSessionAsync(user, deviceId, cancellationToken);
         return new TwoFactorResult(TwoFactorOutcomeType.Success, accessToken, refreshToken);
     }
 
@@ -266,26 +303,88 @@ public class AuthService : IAuthService
         var expiresAt = (persistence.CreatedAt ?? DateTime.UtcNow).AddDays(_jwtSettings.RefreshTokenDays);
         _db.Persistences.Remove(persistence);
 
-        if (expiresAt <= DateTime.UtcNow || persistence.User.Blocked)
+        // A refresh token only lives as long as its session: once the user signs in elsewhere (or
+        // was signed in before sessions were tracked), it can't be used to keep the old device going.
+        var sessionEnded = persistence.SessionId is null || persistence.SessionId != persistence.User.ActiveSessionId;
+        if (expiresAt <= DateTime.UtcNow || persistence.User.Blocked || sessionEnded)
         {
             await _db.SaveChangesAsync(cancellationToken);
             return new RefreshResult(RefreshOutcomeType.InvalidOrExpired);
         }
 
-        var (accessToken, newRefreshToken) = await IssueTokensAsync(persistence.User, cancellationToken);
+        var (accessToken, newRefreshToken) = await IssueTokensAsync(persistence.User, persistence.SessionId!, persistence.DeviceId, cancellationToken);
         return new RefreshResult(RefreshOutcomeType.Success, accessToken, newRefreshToken);
     }
 
-    private async Task<(AccessToken AccessToken, string RefreshToken)> IssueTokensAsync(User user, CancellationToken cancellationToken)
+    public async Task<PasswordChangeResult> ChangePasswordAsync(int userId, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return new PasswordChangeResult(PasswordChangeOutcomeType.NotFound);
+        }
+
+        if (!_passwordHasher.Verify(currentPassword, user.PasswordHash))
+        {
+            return new PasswordChangeResult(PasswordChangeOutcomeType.InvalidCurrentPassword);
+        }
+
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < PasswordMinLength)
+        {
+            return new PasswordChangeResult(PasswordChangeOutcomeType.WeakPassword);
+        }
+
+        if (newPassword == currentPassword)
+        {
+            return new PasswordChangeResult(PasswordChangeOutcomeType.SameAsCurrent);
+        }
+
+        user.PasswordHash = _passwordHasher.Hash(newPassword);
+        user.MustChangePassword = false;
+
+        // Stay signed in on this device, but reissue the tokens: the current ones carry the
+        // password-change-required claim, and older refresh tokens predate the new password.
+        var staleRefreshTokens = await _db.Persistences.Where(p => p.UserId == user.Id).ToListAsync(cancellationToken);
+        _db.Persistences.RemoveRange(staleRefreshTokens);
+
+        var (accessToken, refreshToken) = user.ActiveSessionId is null
+            ? await StartSessionAsync(user, user.ActiveDeviceId, cancellationToken)
+            : await IssueTokensAsync(user, user.ActiveSessionId, user.ActiveDeviceId, cancellationToken);
+        var userData = await BuildUserDataAsync(user, cancellationToken);
+
+        return new PasswordChangeResult(PasswordChangeOutcomeType.Success, accessToken, refreshToken, userData);
+    }
+
+    /// <summary>
+    /// Completes a sign-in as a brand-new session, which signs the user out everywhere else: every
+    /// other device's refresh tokens are revoked here, and their access tokens stop being accepted
+    /// because their session id no longer matches (see <see cref="IActiveSessionChecker"/>).
+    /// </summary>
+    private async Task<(AccessToken AccessToken, string RefreshToken)> StartSessionAsync(User user, string? deviceId, CancellationToken cancellationToken)
+    {
+        var otherSessions = await _db.Persistences.Where(p => p.UserId == user.Id).ToListAsync(cancellationToken);
+        _db.Persistences.RemoveRange(otherSessions);
+
+        var sessionId = Guid.NewGuid().ToString("N");
+        user.ActiveSessionId = sessionId;
+        user.ActiveDeviceId = deviceId;
+
+        return await IssueTokensAsync(user, sessionId, deviceId, cancellationToken);
+    }
+
+    private async Task<(AccessToken AccessToken, string RefreshToken)> IssueTokensAsync(User user, string sessionId, string? deviceId, CancellationToken cancellationToken)
     {
         var permissionSlugs = await _permissionService.GetEffectivePermissionSlugsAsync(user.Id, cancellationToken);
-        var accessToken = _jwtTokenService.GenerateAccessToken(user, permissionSlugs);
+        var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
+        var accessToken = _jwtTokenService.GenerateAccessToken(user, permissionSlugs, userType, sessionId);
 
         var rawRefreshToken = GenerateRefreshTokenValue();
         _db.Persistences.Add(new Persistence
         {
             UserId = user.Id,
             Code = Hash(rawRefreshToken),
+            SessionId = sessionId,
+            DeviceId = deviceId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         });
@@ -317,6 +416,15 @@ public class AuthService : IAuthService
 
         return _jwtTokenService.GenerateLoginOtpChallengeToken(user.Id, otp.Id);
     }
+
+    private async Task<UserLoginData> BuildUserDataAsync(User user, CancellationToken cancellationToken) => new(
+        user.Id.ToString(),
+        $"{user.FirstName} {user.LastName}".Trim(),
+        user.Email,
+        user.Phone,
+        user.UserClass?.ToString(),
+        await GetUserTypeSlugAsync(user.Id, cancellationToken),
+        user.MustChangePassword);
 
     private Task SendOtpAsync(User user, string subject, string message, CancellationToken cancellationToken) =>
         _otpDispatcher.DispatchAsync(new OtpMessage(user.Email, user.Phone, subject, message), cancellationToken);

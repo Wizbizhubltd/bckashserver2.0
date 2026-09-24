@@ -29,6 +29,10 @@ public class BCKashDbContext : DbContext
 
     // Organization & Reference Data
     public DbSet<Office> Offices => Set<Office>();
+    public DbSet<State> States => Set<State>();
+    public DbSet<Lga> Lgas => Set<Lga>();
+    public DbSet<City> Cities => Set<City>();
+    public DbSet<Zone> Zones => Set<Zone>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<Country> Countries => Set<Country>();
