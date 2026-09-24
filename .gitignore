@@ -16,3 +16,8 @@ obj/
 BCKashWebClient/
 
 .DS_Store
+
+# Database dumps (dbdump/, see README "Seeding from the legacy database dump") — never commit one.
+dbdump/
+*.sql
+!scripts/sql/*.sql

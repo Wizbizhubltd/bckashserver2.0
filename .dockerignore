@@ -14,3 +14,7 @@
 docs/
 tests/
 *.md
+
+# 3GB legacy dump — must never land in the image build context.
+dbdump/
+*.sql

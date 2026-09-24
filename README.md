@@ -57,6 +57,34 @@ applied uniformly to every query, not tuned per entity. If a specific read turns
 guaranteed real-time consistency regardless of caching, exclude that one query with
 `.NotCacheable()`.
 
+## Seeding from the legacy database dump
+
+The legacy phpMyAdmin dump goes in a `dbdump/` folder at the repo root. The folder is ignored
+by both git and Docker. Use the same layout locally and on the server (where the repo is
+`~/bckashproject`):
+
+```
+bckashproject/       # repo root
+  dbdump/
+    bckbbjxq_real.sql
+  docker-compose.yml
+  scripts/seed-legacy-dump.sh
+  ...
+```
+
+With `.env` in place, run from the repo root:
+
+```bash
+scripts/seed-legacy-dump.sh
+```
+
+The script starts the stack, so the API applies its EF migrations. It then loads the dump into a
+temporary staging database, copies every table into `DB_NAME` (keeping legacy IDs), checks that
+each table's row count matches, drops the staging database, flushes Redis and restarts the API. A
+3GB dump takes about 10 minutes. It won't touch a database that already has users unless you pass
+`--force`, which wipes and re-seeds. To use a different dump, set `LEGACY_DUMP_PATH` in `.env` or
+pass the path as an argument.
+
 ## Local setup — API (without Docker)
 
 Requires the .NET 10 SDK, a MariaDB 11.4 instance, and a Redis instance (e.g. the `db` and
