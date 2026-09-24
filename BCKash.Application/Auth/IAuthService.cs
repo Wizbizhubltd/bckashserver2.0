@@ -55,6 +55,33 @@ public enum RefreshOutcomeType
     InvalidOrExpired,
 }
 
+public enum PasswordResetRequestOutcomeType
+{
+    /// <summary>
+    /// Returned whether or not the email matched an eligible account, so the endpoint can't be
+    /// used to discover which emails are registered — an unknown email just gets a challenge that
+    /// will never verify.
+    /// </summary>
+    Accepted,
+    LockedOut,
+
+    /// <summary>A reset code was already sent to this account within the cooldown window.</summary>
+    TooSoon,
+}
+
+public record PasswordResetRequestResult(PasswordResetRequestOutcomeType Outcome, string? ChallengeToken = null);
+
+public enum PasswordResetOutcomeType
+{
+    Success,
+    InvalidChallenge,
+    InvalidCode,
+    TooManyAttempts,
+    WeakPassword,
+}
+
+public record PasswordResetResult(PasswordResetOutcomeType Outcome);
+
 public record RefreshResult(RefreshOutcomeType Outcome, AccessToken? AccessToken = null, string? RefreshToken = null);
 
 /// <summary>
@@ -69,6 +96,12 @@ public interface IAuthService
     Task<TwoFactorResult> VerifyTwoFactorAsync(string challengeToken, string totpCode, CancellationToken cancellationToken = default);
 
     Task<OtpVerifyResult> VerifyLoginOtpAsync(string challengeToken, string code, CancellationToken cancellationToken = default);
+
+    /// <summary>Self-service forgot-password step 1: emails/texts a reset OTP to the account, if one exists and may sign in.</summary>
+    Task<PasswordResetRequestResult> RequestPasswordResetAsync(string email, string? ip, CancellationToken cancellationToken = default);
+
+    /// <summary>Forgot-password step 2: verifies the reset OTP, sets the new password and signs the user out everywhere.</summary>
+    Task<PasswordResetResult> ResetPasswordAsync(string challengeToken, string code, string newPassword, CancellationToken cancellationToken = default);
 
     Task<RefreshResult> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default);
 }

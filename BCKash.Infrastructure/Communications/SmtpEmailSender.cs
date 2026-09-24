@@ -31,7 +31,9 @@ public class SmtpEmailSender : IEmailSender
 
         message.Body = builder.ToMessageBody();
 
-        using var client = new SmtpClient();
+        // MailKit's default is two minutes per operation; an unreachable relay shouldn't tie up
+        // the sender that long.
+        using var client = new SmtpClient { Timeout = 20_000 };
         // Revocation checking off: .NET's OCSP/CRL lookup for Brevo's cert chain has been
         // observed to fail with "incomplete certificate revocation check" on this network even
         // though the certificate itself is valid — MailKit then aborts the handshake entirely.

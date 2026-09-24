@@ -74,6 +74,39 @@ public class AuthController : ControllerBase
         };
     }
 
+    [HttpPost("password/forgot")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var result = await _authService.RequestPasswordResetAsync(request.Email, ip, cancellationToken);
+
+        return result.Outcome switch
+        {
+            PasswordResetRequestOutcomeType.Accepted => Ok(new ForgotPasswordResponse(result.ChallengeToken!)),
+            PasswordResetRequestOutcomeType.LockedOut => Problem(title: "Too many failed attempts — try again later", statusCode: StatusCodes.Status429TooManyRequests),
+            PasswordResetRequestOutcomeType.TooSoon => Problem(title: "A code was sent recently — wait a minute before requesting another", statusCode: StatusCodes.Status429TooManyRequests),
+            _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    [HttpPost("password/reset")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _authService.ResetPasswordAsync(request.ChallengeToken, request.Code, request.NewPassword, cancellationToken);
+
+        // InvalidChallenge and InvalidCode share one message: a decoy challenge (unknown email) must
+        // be indistinguishable from a real one with a mistyped code.
+        return result.Outcome switch
+        {
+            PasswordResetOutcomeType.Success => NoContent(),
+            PasswordResetOutcomeType.InvalidChallenge or PasswordResetOutcomeType.InvalidCode =>
+                Problem(title: "Invalid or expired reset code", statusCode: StatusCodes.Status400BadRequest),
+            PasswordResetOutcomeType.TooManyAttempts => Problem(title: "Too many incorrect attempts — request a new code", statusCode: StatusCodes.Status429TooManyRequests),
+            PasswordResetOutcomeType.WeakPassword => Problem(title: "Password must be at least 8 characters", statusCode: StatusCodes.Status400BadRequest),
+            _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(RefreshRequest request, CancellationToken cancellationToken)
     {

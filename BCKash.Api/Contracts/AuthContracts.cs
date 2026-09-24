@@ -10,6 +10,12 @@ public record OtpVerifyRequest(string ChallengeToken, string Code);
 
 public record RefreshRequest(string RefreshToken);
 
+public record ForgotPasswordRequest(string Email);
+
+public record ForgotPasswordResponse(string ChallengeToken);
+
+public record ResetPasswordRequest(string ChallengeToken, string Code, string NewPassword);
+
 public record TokenResponse(string AccessToken, DateTime ExpiresAtUtc, string RefreshToken);
 
 // ChallengeType lets a client tell the two challenge kinds apart — both responses would

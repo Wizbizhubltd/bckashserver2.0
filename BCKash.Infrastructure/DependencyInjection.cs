@@ -200,12 +200,16 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddSingleton<IEmailSender, RecordingEmailSender>();
             services.AddSingleton<ISmsSender, RecordingSmsSender>();
             services.AddSingleton<IOtpSmsSender, RecordingOtpSmsSender>();
+            services.AddScoped<IOtpDispatcher, InlineOtpDispatcher>();
         }
         else
         {
             services.AddScoped<IEmailSender, SmtpEmailSender>();
             services.AddHttpClient<ISmsSender, HttpSmsGatewaySender>();
             services.AddHttpClient<IOtpSmsSender, TermiiOtpSmsSender>();
+            services.AddSingleton<BackgroundOtpDispatcher>();
+            services.AddSingleton<IOtpDispatcher>(sp => sp.GetRequiredService<BackgroundOtpDispatcher>());
+            services.AddHostedService(sp => sp.GetRequiredService<BackgroundOtpDispatcher>());
         }
 
         services.AddHostedService<ReferenceDataSeeder>();

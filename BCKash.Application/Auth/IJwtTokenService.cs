@@ -28,4 +28,15 @@ public interface IJwtTokenService
 
     /// <summary>Returns the (user id, OTP id) if <paramref name="challengeToken"/> is a valid, unexpired login-OTP challenge token.</summary>
     (int UserId, int OtpId)? ValidateLoginOtpChallengeToken(string challengeToken);
+
+    /// <summary>
+    /// Token issued by the forgot-password step once a reset OTP has been generated and sent.
+    /// Deliberately a different token type from the login-OTP challenge (though both point at a
+    /// <see cref="Domain.Identity.LoginOtp"/> row) so a reset challenge — which never required the
+    /// password — can't be replayed against the login-OTP verify endpoint to obtain a session.
+    /// </summary>
+    string GeneratePasswordResetChallengeToken(int userId, int otpId);
+
+    /// <summary>Returns the (user id, OTP id) if <paramref name="challengeToken"/> is a valid, unexpired password-reset challenge token.</summary>
+    (int UserId, int OtpId)? ValidatePasswordResetChallengeToken(string challengeToken);
 }

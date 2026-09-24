@@ -1,10 +1,8 @@
 using System.Security.Cryptography;
 using BCKash.Application.Auth;
-using BCKash.Application.Communications;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace BCKash.Infrastructure.Auth;
@@ -12,6 +10,9 @@ namespace BCKash.Infrastructure.Auth;
 public class AuthService : IAuthService
 {
     private const int OtpMaxAttempts = 5;
+    private const int PasswordMinLength = 8;
+    private static readonly TimeSpan PasswordResetOtpLifetime = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan PasswordResetCooldown = TimeSpan.FromSeconds(60);
 
     private readonly BCKashDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
@@ -19,9 +20,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly ILoginThrottleService _throttleService;
     private readonly IPermissionService _permissionService;
-    private readonly IEmailSender _emailSender;
-    private readonly IOtpSmsSender _otpSmsSender;
-    private readonly ILogger<AuthService> _logger;
+    private readonly IOtpDispatcher _otpDispatcher;
     private readonly JwtSettings _jwtSettings;
 
     public AuthService(
@@ -31,9 +30,7 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         ILoginThrottleService throttleService,
         IPermissionService permissionService,
-        IEmailSender emailSender,
-        IOtpSmsSender otpSmsSender,
-        ILogger<AuthService> logger,
+        IOtpDispatcher otpDispatcher,
         IOptions<JwtSettings> jwtSettings)
     {
         _db = db;
@@ -42,9 +39,7 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
         _throttleService = throttleService;
         _permissionService = permissionService;
-        _emailSender = emailSender;
-        _otpSmsSender = otpSmsSender;
-        _logger = logger;
+        _otpDispatcher = otpDispatcher;
         _jwtSettings = jwtSettings.Value;
     }
 
@@ -137,6 +132,102 @@ public class AuthService : IAuthService
         return new OtpVerifyResult(OtpVerifyOutcomeType.Success, accessToken, refreshToken, userData);
     }
 
+    public async Task<PasswordResetRequestResult> RequestPasswordResetAsync(string email, string? ip, CancellationToken cancellationToken = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.Trim().ToLower(), cancellationToken);
+
+        if (await _throttleService.IsLockedOutAsync(user?.Id, ip, cancellationToken))
+        {
+            return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.LockedOut);
+        }
+
+        // Blocked or not-yet-approved accounts couldn't sign in with a new password anyway, so they
+        // get the same decoy challenge as an unknown email rather than a revealing error.
+        if (user is null || user.Blocked || user.OnboardingStatus != UserOnboardingStatus.Approved)
+        {
+            return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.Accepted,
+                _jwtTokenService.GeneratePasswordResetChallengeToken(0, 0));
+        }
+
+        // The endpoint is anonymous and every request sends an SMS, so cap how often one account can trigger it.
+        var cooldownStart = DateTime.UtcNow - PasswordResetCooldown;
+        if (await _db.LoginOtps.AnyAsync(o => o.UserId == user.Id && o.CreatedAt > cooldownStart, cancellationToken))
+        {
+            return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.TooSoon);
+        }
+
+        var code = GenerateNumericOtp(6);
+        var otp = new LoginOtp
+        {
+            UserId = user.Id,
+            CodeHash = Hash(code),
+            ExpiresAtUtc = DateTime.UtcNow.Add(PasswordResetOtpLifetime),
+            CreatedAt = DateTime.UtcNow,
+        };
+        _db.LoginOtps.Add(otp);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await SendOtpAsync(
+            user,
+            "Your BCKash password reset code",
+            $"Your BCKash password reset code is {code}. It expires in {(int)PasswordResetOtpLifetime.TotalMinutes} minutes. If you didn't request this, ignore this message.",
+            cancellationToken);
+
+        return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.Accepted,
+            _jwtTokenService.GeneratePasswordResetChallengeToken(user.Id, otp.Id));
+    }
+
+    public async Task<PasswordResetResult> ResetPasswordAsync(string challengeToken, string code, string newPassword, CancellationToken cancellationToken = default)
+    {
+        var claims = _jwtTokenService.ValidatePasswordResetChallengeToken(challengeToken);
+        if (claims is null)
+        {
+            return new PasswordResetResult(PasswordResetOutcomeType.InvalidChallenge);
+        }
+
+        var (userId, otpId) = claims.Value;
+        var otp = await _db.LoginOtps.FirstOrDefaultAsync(o => o.Id == otpId && o.UserId == userId, cancellationToken);
+        if (otp is null || otp.ConsumedAtUtc is not null || otp.ExpiresAtUtc <= DateTime.UtcNow)
+        {
+            return new PasswordResetResult(PasswordResetOutcomeType.InvalidChallenge);
+        }
+
+        if (otp.Attempts >= OtpMaxAttempts)
+        {
+            return new PasswordResetResult(PasswordResetOutcomeType.TooManyAttempts);
+        }
+
+        if (otp.CodeHash != Hash(code))
+        {
+            otp.Attempts++;
+            await _db.SaveChangesAsync(cancellationToken);
+            return new PasswordResetResult(PasswordResetOutcomeType.InvalidCode);
+        }
+
+        // Checked only after the code matches, so a weak-password rejection doesn't burn an attempt
+        // and the user can simply pick a stronger one with the same code.
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < PasswordMinLength)
+        {
+            return new PasswordResetResult(PasswordResetOutcomeType.WeakPassword);
+        }
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return new PasswordResetResult(PasswordResetOutcomeType.InvalidChallenge);
+        }
+
+        otp.ConsumedAtUtc = DateTime.UtcNow;
+        user.PasswordHash = _passwordHasher.Hash(newPassword);
+
+        // Whoever prompted the reset may have been using a stolen session — revoke every refresh token.
+        var sessions = await _db.Persistences.Where(p => p.UserId == user.Id).ToListAsync(cancellationToken);
+        _db.Persistences.RemoveRange(sessions);
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return new PasswordResetResult(PasswordResetOutcomeType.Success);
+    }
+
     public async Task<TwoFactorResult> VerifyTwoFactorAsync(string challengeToken, string totpCode, CancellationToken cancellationToken = default)
     {
         var userId = _jwtTokenService.ValidateTwoFactorChallengeToken(challengeToken);
@@ -218,39 +309,17 @@ public class AuthService : IAuthService
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
 
-        await SendLoginOtpAsync(user, code, cancellationToken);
+        await SendOtpAsync(
+            user,
+            "Your BCKash login code",
+            $"Your BCKash login verification code is {code}. It expires in 5 minutes.",
+            cancellationToken);
 
         return _jwtTokenService.GenerateLoginOtpChallengeToken(user.Id, otp.Id);
     }
 
-    // Delivery is best-effort per channel: a failure on one (a bad Termii key, SMTP relay
-    // hiccup, etc.) must not block the other from going out, and must never surface as a
-    // login failure — the OTP row already exists, so the user can still receive/retry it.
-    private async Task SendLoginOtpAsync(User user, string code, CancellationToken cancellationToken)
-    {
-        var message = $"Your BCKash login verification code is {code}. It expires in 5 minutes.";
-
-        try
-        {
-            await _emailSender.SendAsync(user.Email, "Your BCKash login code", message, null, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to email login OTP to {Email}", user.Email);
-        }
-
-        if (!string.IsNullOrWhiteSpace(user.Phone))
-        {
-            try
-            {
-                await _otpSmsSender.SendAsync(user.Phone!, message, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to SMS login OTP to {Phone}", user.Phone);
-            }
-        }
-    }
+    private Task SendOtpAsync(User user, string subject, string message, CancellationToken cancellationToken) =>
+        _otpDispatcher.DispatchAsync(new OtpMessage(user.Email, user.Phone, subject, message), cancellationToken);
 
     private async Task<string?> GetUserTypeSlugAsync(int userId, CancellationToken cancellationToken) =>
         await _db.RoleUsers

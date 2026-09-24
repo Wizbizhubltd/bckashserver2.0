@@ -12,6 +12,7 @@ public class JwtTokenService : IJwtTokenService
 {
     private const string TwoFactorChallengeType = "2fa_challenge";
     private const string LoginOtpChallengeType = "otp_challenge";
+    private const string PasswordResetChallengeType = "password_reset_challenge";
 
     private readonly JwtSettings _settings;
 
@@ -75,20 +76,33 @@ public class JwtTokenService : IJwtTokenService
         return userId;
     }
 
-    public string GenerateLoginOtpChallengeToken(int userId, int otpId)
+    // Five minutes is enough to receive and type a 6-digit code, short enough to limit replay if intercepted.
+    public string GenerateLoginOtpChallengeToken(int userId, int otpId) =>
+        CreateOtpChallengeToken(userId, otpId, LoginOtpChallengeType, TimeSpan.FromMinutes(5));
+
+    public (int UserId, int OtpId)? ValidateLoginOtpChallengeToken(string challengeToken) =>
+        ValidateOtpChallengeToken(challengeToken, LoginOtpChallengeType);
+
+    // Longer than the login window since the user also has to choose and confirm a new password.
+    public string GeneratePasswordResetChallengeToken(int userId, int otpId) =>
+        CreateOtpChallengeToken(userId, otpId, PasswordResetChallengeType, TimeSpan.FromMinutes(15));
+
+    public (int UserId, int OtpId)? ValidatePasswordResetChallengeToken(string challengeToken) =>
+        ValidateOtpChallengeToken(challengeToken, PasswordResetChallengeType);
+
+    private string CreateOtpChallengeToken(int userId, int otpId, string type, TimeSpan lifetime)
     {
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
-            new Claim("type", LoginOtpChallengeType),
+            new Claim("type", type),
             new Claim("otp_id", otpId.ToString()),
         };
 
-        // Five minutes is enough to receive and type a 6-digit code, short enough to limit replay if intercepted.
-        return CreateToken(claims, DateTime.UtcNow.AddMinutes(5));
+        return CreateToken(claims, DateTime.UtcNow.Add(lifetime));
     }
 
-    public (int UserId, int OtpId)? ValidateLoginOtpChallengeToken(string challengeToken)
+    private (int UserId, int OtpId)? ValidateOtpChallengeToken(string challengeToken, string expectedType)
     {
         var principal = ValidateToken(challengeToken);
         if (principal is null)
@@ -100,7 +114,7 @@ public class JwtTokenService : IJwtTokenService
         var sub = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var otpIdClaim = principal.FindFirst("otp_id")?.Value;
 
-        if (type != LoginOtpChallengeType || !int.TryParse(sub, out var userId) || !int.TryParse(otpIdClaim, out var otpId))
+        if (type != expectedType || !int.TryParse(sub, out var userId) || !int.TryParse(otpIdClaim, out var otpId))
         {
             return null;
         }
