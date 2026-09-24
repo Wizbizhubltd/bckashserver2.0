@@ -46,7 +46,10 @@ services:
       ConnectionStrings__BCKashDb: "Server=db;Port=3306;Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
       ConnectionStrings__Redis: "redis:6379,password=${REDIS_PASSWORD}"
     ports:
-      - "${API_PORT:-4000}:4000"
+      # Loopback only: on the server nginx proxies to 127.0.0.1:4000, and the API shouldn't be
+      # reachable from outside except through it. Keep API_PORT a bare port number — the seed
+      # script builds http://localhost:$API_PORT/ from it.
+      - "127.0.0.1:${API_PORT:-4000}:4000"
     depends_on:
       db:
         condition: service_healthy
