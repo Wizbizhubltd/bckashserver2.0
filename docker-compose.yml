@@ -1,18 +1,19 @@
 services:
   db:
-    image: mysql:8.0
+    # MariaDB, matching production (MariaDB 11.4).
+    image: mariadb:11.4
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     ports:
       - "${DB_EXTERNAL_PORT:-3307}:3306"
     volumes:
-      - bckash-mysql-data:/var/lib/mysql
+      - bckash-mariadb-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -39,7 +40,7 @@ services:
     env_file:
       - .env
     environment:
-      # Overrides the .env values to reach MySQL/Redis over the docker network (service names
+      # Overrides the .env values to reach MariaDB/Redis over the docker network (service names
       # `db`/`redis`, their internal ports) instead of the host-mapped ports .env uses for
       # `dotnet run` outside docker.
       ConnectionStrings__BCKashDb: "Server=db;Port=3306;Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
@@ -55,6 +56,6 @@ services:
       - bckash-uploads:/app/App_Data/uploads
 
 volumes:
-  bckash-mysql-data:
+  bckash-mariadb-data:
   bckash-uploads:
   bckash-redis-data:

@@ -79,9 +79,9 @@ public static class InfrastructureServiceCollectionExtensions
 
                 // A fixed server version, not ServerVersion.AutoDetect(...) — AutoDetect needs a
                 // live connection at startup, which would make the API fail to boot whenever the
-                // database is briefly unreachable. BCKash targets MySQL/MariaDB per the BRD;
-                // adjust if the target instance is meaningfully older/newer than 8.0.
-                options.UseMySql(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));
+                // database is briefly unreachable. BCKash runs on MariaDB 11.4 (production and the
+                // docker-compose `db` service); adjust if the target instance changes.
+                options.UseMySql(builder.ConnectionString, new MariaDbServerVersion(new Version(11, 4, 0)));
             }
 
             options.AddInterceptors(

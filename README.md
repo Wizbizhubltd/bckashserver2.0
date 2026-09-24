@@ -30,16 +30,16 @@ missing. `appsettings.json`/`appsettings.Development.json` only carry non-secret
 
 ## Running with Docker (recommended)
 
-Requires Docker and Docker Compose. Brings up the API, a MySQL 8 instance, and Redis together:
+Requires Docker and Docker Compose. Brings up the API, a MariaDB 11.4 instance, and Redis together:
 
 ```bash
 cp .env.example .env   # fill in real values first
 docker compose up --build
 ```
 
-The API is then reachable at `http://localhost:8080` (`API_PORT` in `.env`), MySQL at
+The API is then reachable at `http://localhost:8080` (`API_PORT` in `.env`), MariaDB at
 `localhost:3307` (`DB_EXTERNAL_PORT`), Redis at `localhost:6380` (`REDIS_EXTERNAL_PORT`). All
-three containers' data (MySQL data dir, Redis data dir, uploaded files) persist in named volumes
+three containers' data (MariaDB data dir, Redis data dir, uploaded files) persist in named volumes
 across restarts. Tear down with `docker compose down` (add `-v` to also drop the volumes).
 
 Redis backs an EF Core second-level cache (`EFCoreSecondLevelCacheInterceptor`): every query
@@ -59,11 +59,11 @@ guaranteed real-time consistency regardless of caching, exclude that one query w
 
 ## Local setup — API (without Docker)
 
-Requires the .NET 10 SDK, a MySQL/MariaDB 8.x instance, and a Redis instance (e.g. the `db` and
+Requires the .NET 10 SDK, a MariaDB 11.4 instance, and a Redis instance (e.g. the `db` and
 `redis` services above, started with `docker compose up db redis`).
 
 ```bash
-cp .env.example .env   # fill in real values first, ConnectionStrings__BCKashDb pointing at your MySQL
+cp .env.example .env   # fill in real values first, ConnectionStrings__BCKashDb pointing at your MariaDB
 cd BCKash.Api
 dotnet run
 ```
