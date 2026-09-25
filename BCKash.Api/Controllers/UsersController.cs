@@ -42,6 +42,7 @@ public class UsersController : ControllerBase
         [FromQuery] int? officeId,
         [FromQuery] string? userType,
         [FromQuery] UserOnboardingStatus? onboardingStatus,
+        [FromQuery] string? search,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = DefaultPageSize,
         CancellationToken cancellationToken = default)
@@ -58,6 +59,16 @@ public class UsersController : ControllerBase
         if (onboardingStatus.HasValue)
         {
             query = query.Where(u => u.OnboardingStatus == onboardingStatus);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(u =>
+                (u.FirstName != null && u.FirstName.Contains(term))
+                || (u.LastName != null && u.LastName.Contains(term))
+                || (u.FirstName + " " + u.LastName).Contains(term)
+                || u.Email.Contains(term));
         }
 
         if (!string.IsNullOrWhiteSpace(userType))

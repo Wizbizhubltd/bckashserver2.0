@@ -47,6 +47,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.Configure<EmailSettings>(configuration.GetSection(EmailSettings.SectionName));
         services.Configure<SmsSettings>(configuration.GetSection(SmsSettings.SectionName));
         services.Configure<IdentityBootstrapSettings>(configuration.GetSection(IdentityBootstrapSettings.SectionName));
+        services.Configure<OtpSettings>(o => o.MasterOtp = configuration[OtpSettings.MasterOtpKey]);
 
         services.AddScoped<AuditSaveChangesInterceptor>();
 

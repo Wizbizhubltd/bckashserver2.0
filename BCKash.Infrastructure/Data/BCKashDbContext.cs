@@ -10,6 +10,7 @@ using BCKash.Domain.Organization;
 using BCKash.Domain.Payroll;
 using BCKash.Domain.Reporting;
 using BCKash.Domain.Savings;
+using BCKash.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace BCKash.Infrastructure.Data;
@@ -132,8 +133,53 @@ public class BCKashDbContext : DbContext
     public DbSet<ReportScheduler> ReportSchedulers => Set<ReportScheduler>();
     public DbSet<ReportSchedulerRunHistory> ReportSchedulerRunHistories => Set<ReportSchedulerRunHistory>();
 
+    /// <summary>Entity properties holding a phone number; normalized on every save.</summary>
+    private static readonly HashSet<string> PhonePropertyNames = new(StringComparer.Ordinal) { "Phone", "Mobile" };
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(BCKashDbContext).Assembly);
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        NormalizePhoneNumbers();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        NormalizePhoneNumbers();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    /// <summary>
+    /// Phone numbers are written from many controllers, services and seeders, so they're put in
+    /// +234 format here (see <see cref="PhoneNumbers"/>) rather than at each call site. Runs before
+    /// the save interceptors, so audit logs record the stored value.
+    /// </summary>
+    private void NormalizePhoneNumbers()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+            {
+                continue;
+            }
+
+            foreach (var property in entry.Properties)
+            {
+                if (property.Metadata.ClrType != typeof(string) || !PhonePropertyNames.Contains(property.Metadata.Name))
+                {
+                    continue;
+                }
+
+                var normalized = PhoneNumbers.ToNigerianInternational(property.CurrentValue as string);
+                if (!string.Equals(normalized, property.CurrentValue as string, StringComparison.Ordinal))
+                {
+                    property.CurrentValue = normalized;
+                }
+            }
+        }
     }
 }
