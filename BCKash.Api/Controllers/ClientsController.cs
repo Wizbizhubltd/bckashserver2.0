@@ -2,6 +2,7 @@ using BCKash.Api.Contracts;
 using BCKash.Application.Clients;
 using BCKash.Domain.Clients;
 using BCKash.Infrastructure.Data;
+using BCKash.SharedKernel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -71,7 +72,10 @@ public class ClientsController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(mobile))
         {
-            query = query.Where(c => c.Mobile != null && c.Mobile.StartsWith(mobile));
+            // Stored numbers are +234-formatted, so match that form of what was typed (0803… → +234803…),
+            // plus the raw input for rows saved before normalization.
+            var normalizedMobile = PhoneNumbers.ToNigerianInternational(mobile)!;
+            query = query.Where(c => c.Mobile != null && (c.Mobile.StartsWith(normalizedMobile) || c.Mobile.StartsWith(mobile)));
         }
 
         if (officeId.HasValue)

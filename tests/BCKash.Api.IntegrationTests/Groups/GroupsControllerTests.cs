@@ -55,7 +55,7 @@ public class GroupsControllerTests : IClassFixture<BCKashWebApplicationFactory>
 
         var updated = await response.Content.ReadFromJsonAsync<GroupResponse>(TestJson.Options);
         Assert.Equal("Updated Name", updated!.Name);
-        Assert.Equal("08012345678", updated.Mobile);
+        Assert.Equal("+2348012345678", updated.Mobile);
         Assert.Equal(GroupStatus.Pending, updated.Status);
     }
 

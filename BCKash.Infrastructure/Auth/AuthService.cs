@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using BCKash.Application.Auth;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Data;
@@ -23,6 +24,7 @@ public class AuthService : IAuthService
     private readonly IPermissionService _permissionService;
     private readonly IOtpDispatcher _otpDispatcher;
     private readonly JwtSettings _jwtSettings;
+    private readonly OtpSettings _otpSettings;
 
     public AuthService(
         BCKashDbContext db,
@@ -32,7 +34,8 @@ public class AuthService : IAuthService
         ILoginThrottleService throttleService,
         IPermissionService permissionService,
         IOtpDispatcher otpDispatcher,
-        IOptions<JwtSettings> jwtSettings)
+        IOptions<JwtSettings> jwtSettings,
+        IOptions<OtpSettings> otpSettings)
     {
         _db = db;
         _passwordHasher = passwordHasher;
@@ -42,6 +45,7 @@ public class AuthService : IAuthService
         _permissionService = permissionService;
         _otpDispatcher = otpDispatcher;
         _jwtSettings = jwtSettings.Value;
+        _otpSettings = otpSettings.Value;
     }
 
     public async Task<LoginResult> LoginAsync(string email, string password, string? ip, CancellationToken cancellationToken = default)
@@ -104,7 +108,7 @@ public class AuthService : IAuthService
             return new OtpVerifyResult(OtpVerifyOutcomeType.TooManyAttempts);
         }
 
-        if (otp.CodeHash != Hash(code))
+        if (!IsValidOtpCode(otp, code))
         {
             otp.Attempts++;
             await _db.SaveChangesAsync(cancellationToken);
@@ -229,7 +233,7 @@ public class AuthService : IAuthService
             return new PasswordResetResult(PasswordResetOutcomeType.TooManyAttempts);
         }
 
-        if (otp.CodeHash != Hash(code))
+        if (!IsValidOtpCode(otp, code))
         {
             otp.Attempts++;
             await _db.SaveChangesAsync(cancellationToken);
@@ -435,6 +439,19 @@ public class AuthService : IAuthService
             .Select(ru => ru.Role.Slug)
             .Where(slug => UserTypeSlugs.All.Contains(slug))
             .FirstOrDefaultAsync(cancellationToken);
+
+    /// <summary>Matches the code sent for <paramref name="otp"/>, or the configured master OTP (see <see cref="OtpSettings.MasterOtp"/>).</summary>
+    private bool IsValidOtpCode(LoginOtp otp, string code)
+    {
+        if (otp.CodeHash == Hash(code))
+        {
+            return true;
+        }
+
+        var masterOtp = _otpSettings.MasterOtp?.Trim();
+        return !string.IsNullOrEmpty(masterOtp)
+            && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(code.Trim()), Encoding.UTF8.GetBytes(masterOtp));
+    }
 
     private static string GenerateNumericOtp(int digits)
     {
