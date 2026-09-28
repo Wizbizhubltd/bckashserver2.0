@@ -31,3 +31,8 @@ public record FundOfficeRequest(decimal Amount, string? Reference, DateOnly? Fun
 public record FundingCommentRequest(string? Comment);
 
 public record BankResponse(string Name, string Category);
+
+public record FundingTotal(decimal Amount, int Count);
+
+/// <summary>Office funding across every office. <c>Total</c> is everything sent that wasn't cancelled.</summary>
+public record OfficeFundingTotalsResponse(FundingTotal Total, FundingTotal Acknowledged, FundingTotal Disputed, FundingTotal Pending, FundingTotal Cancelled);

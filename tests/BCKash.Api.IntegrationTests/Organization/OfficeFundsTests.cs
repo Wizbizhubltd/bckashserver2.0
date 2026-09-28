@@ -76,6 +76,7 @@ public class OfficeFundsTests : IClassFixture<BCKashWebApplicationFactory>
         // Only the office's manager can acknowledge — not the funder, not other staff.
         Assert.Equal(HttpStatusCode.Forbidden, (await admin.PostAsJsonAsync($"/api/v1/office-fundings/{funding.Id}/acknowledge", new FundingCommentRequest(null))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await otherStaff.PostAsJsonAsync($"/api/v1/office-fundings/{funding.Id}/acknowledge", new FundingCommentRequest(null))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await otherStaff.GetAsync("/api/v1/office-fundings/totals")).StatusCode); // super admins only
 
         var acknowledged = await Read<OfficeFundingResponse>(await manager.PostAsJsonAsync($"/api/v1/office-fundings/{funding.Id}/acknowledge", new FundingCommentRequest("Received")));
         Assert.Equal(OfficeFundingStatus.Acknowledged, acknowledged.Status);
@@ -109,6 +110,10 @@ public class OfficeFundsTests : IClassFixture<BCKashWebApplicationFactory>
 
         var statement = await admin.GetAsync($"/api/v1/office-fundings/{funding.Id}/statement");
         Assert.Equal(HttpStatusCode.OK, statement.StatusCode);
+
+        var totals = await admin.GetFromJsonAsync<OfficeFundingTotalsResponse>("/api/v1/office-fundings/totals", TestJson.Options);
+        Assert.True(totals!.Disputed.Count >= 1 && totals.Disputed.Amount >= 200_000);
+        Assert.Equal(totals.Acknowledged.Amount + totals.Disputed.Amount + totals.Pending.Amount, totals.Total.Amount);
 
         var cancelled = await Read<OfficeFundingResponse>(await admin.PostAsJsonAsync($"/api/v1/office-fundings/{funding.Id}/cancel", new FundingCommentRequest("Re-sending the correct amount")));
         Assert.Equal(OfficeFundingStatus.Cancelled, cancelled.Status);

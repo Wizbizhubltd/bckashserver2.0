@@ -77,6 +77,27 @@ public class OfficeFundsController : ControllerBase
             events.Select(e => new OfficeFundEventResponse(e.Id, e.Type, e.FundingId, e.Amount, e.Comment, Name(names, e.ActorId), e.CreatedAt)).ToList()));
     }
 
+    /// <summary>Office funding across every office, by status — for super admins' overview.</summary>
+    [HttpGet("office-fundings/totals")]
+    [Authorize(Policy = AuthPolicies.SuperAdmin)]
+    public async Task<ActionResult<OfficeFundingTotalsResponse>> Totals(CancellationToken cancellationToken)
+    {
+        var byStatus = (await _db.OfficeFundings
+                .GroupBy(f => f.Status)
+                .Select(g => new { Status = g.Key, Amount = g.Sum(f => f.Amount), Count = g.Count() })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(x => x.Status);
+
+        FundingTotal For(OfficeFundingStatus status) =>
+            byStatus.TryGetValue(status, out var t) ? new FundingTotal(t.Amount, t.Count) : new FundingTotal(0, 0);
+
+        var acknowledged = For(OfficeFundingStatus.Acknowledged);
+        var disputed = For(OfficeFundingStatus.Disputed);
+        var pending = For(OfficeFundingStatus.PendingAcknowledgement);
+        var total = new FundingTotal(acknowledged.Amount + disputed.Amount + pending.Amount, acknowledged.Count + disputed.Count + pending.Count);
+        return Ok(new OfficeFundingTotalsResponse(total, acknowledged, disputed, pending, For(OfficeFundingStatus.Cancelled)));
+    }
+
     /// <summary>Funding for the offices the current user manages — the office portal's acknowledgement queue.</summary>
     [HttpGet("office-fundings/mine")]
     public async Task<ActionResult<IReadOnlyList<OfficeFundingResponse>>> Mine(CancellationToken cancellationToken)
