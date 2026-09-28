@@ -90,4 +90,10 @@ VALUES (@uid, $ROLE_ID, UTC_TIMESTAMP(), UTC_TIMESTAMP());
 COMMIT;
 SQL
 
+# The API caches every EF query in Redis for 5 minutes, and this raw insert bypasses EF's cache
+# invalidation — without a flush, a login tried before seeding keeps "not finding" the user.
+REDIS_PASSWORD=$(env_value REDIS_PASSWORD)
+docker compose exec -T redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FLUSHALL >/dev/null \
+    || echo "Warning: couldn't flush the Redis query cache — restart the api if login can't find the user." >&2
+
 echo "Seeded $EMAIL (role: $ROLE, class: $USER_CLASS) into $DB_NAME"
