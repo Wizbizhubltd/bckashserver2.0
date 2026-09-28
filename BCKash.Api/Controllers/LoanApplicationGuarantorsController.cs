@@ -33,7 +33,7 @@ public class LoanApplicationGuarantorsController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.Guarantors.Where(g => g.LoanApplicationId == applicationId).ToListAsync(cancellationToken);
+        var items = await _db.Guarantors.Where(g => g.LoanApplicationId == applicationId).OrderByDescending(g => g.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

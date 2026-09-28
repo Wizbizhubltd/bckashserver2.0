@@ -33,7 +33,7 @@ public class SavingsAccountsController : ControllerBase
             query = query.Where(s => s.ClientId == clientId);
         }
 
-        var accounts = await query.ToListAsync(cancellationToken);
+        var accounts = await query.OrderByDescending(s => s.Id).ToListAsync(cancellationToken);
         return Ok(accounts.Select(ToResponse).ToList());
     }
 

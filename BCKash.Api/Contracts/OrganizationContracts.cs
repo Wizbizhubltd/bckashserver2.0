@@ -86,13 +86,18 @@ public record ChargeResponse(
     int Id, string? Name, int? CurrencyId, ChargeProduct Product, ChargeType ChargeType, ChargeOption ChargeOption,
     int ChargeFrequency, ChargeFrequencyType ChargeFrequencyType, int ChargeFrequencyAmount,
     decimal? Amount, decimal? MinimumAmount, decimal? MaximumAmount, ChargePaymentMode ChargePaymentMode,
-    bool Active, bool Penalty, bool Override, int? GlAccountIncomeId);
+    bool Active, bool Penalty, bool Override, int? GlAccountIncomeId,
+    int? GraceDays, int? RepeatEveryDays, decimal? MaxTotalPercent, int? FreeAfterInstallments,
+    /// <summary>Loans, loan products, savings accounts and savings products this charge is attached to.</summary>
+    int UsageCount);
 
+/// <summary><c>Penalty</c> is ignored — it follows from <c>ChargeType</c> (see ChargeRules).</summary>
 public record SaveChargeRequest(
     string? Name, int? CurrencyId, ChargeProduct Product, ChargeType ChargeType, ChargeOption ChargeOption,
     int ChargeFrequency, ChargeFrequencyType ChargeFrequencyType, int ChargeFrequencyAmount,
     decimal? Amount, decimal? MinimumAmount, decimal? MaximumAmount, ChargePaymentMode ChargePaymentMode,
-    bool Penalty, bool Override, int? GlAccountIncomeId);
+    bool Penalty, bool Override, int? GlAccountIncomeId,
+    int? GraceDays = null, int? RepeatEveryDays = null, decimal? MaxTotalPercent = null, int? FreeAfterInstallments = null);
 
 // ---- Custom Fields & Values ----
 
@@ -107,3 +112,8 @@ public record SaveCustomFieldRequest(
 public record CustomFieldValueResponse(int Id, int CustomFieldId, string EntityType, int EntityId, string? Value);
 
 public record CaptureCustomFieldValueRequest(int CustomFieldId, string EntityType, int EntityId, string? Value);
+
+/// <summary>Display settings every portal needs (currency symbol and whether it goes "left" or "right" of the amount).</summary>
+public record DisplaySettingsResponse(string CurrencySymbol, string CurrencyPosition);
+
+public record AssignOfficeManagerRequest(int? ManagerId);

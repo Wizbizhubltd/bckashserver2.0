@@ -46,6 +46,7 @@ public class LoansController : ControllerBase
         [FromQuery] LoanStatus? status,
         [FromQuery] int? clientId,
         [FromQuery] int? officeId,
+        [FromQuery] int? loanOfficerId,
         [FromQuery] string? search,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = DefaultPageSize,
@@ -71,6 +72,11 @@ public class LoansController : ControllerBase
             query = query.Where(l => l.OfficeId == officeId);
         }
 
+        if (loanOfficerId.HasValue)
+        {
+            query = query.Where(l => l.LoanOfficerId == loanOfficerId);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             query = query.Where(l => l.AccountNumber != null && l.AccountNumber.Contains(search));
@@ -94,8 +100,19 @@ public class LoansController : ControllerBase
     /// DashboardController.Summary's doc comment for why this is keyed off paid amounts and
     /// bounded to a year, not the `Paid`/`TotalDue` columns or all-time history.
     /// </summary>
+    /// <summary>
+    /// Charges any late-repayment and default penalties that have fallen due (see LoanPenaltyService).
+    /// Also runs daily on its own; this is for running it now. Idempotent, and a no-op while
+    /// "Apply penalties automatically" is off.
+    /// </summary>
+    [HttpPost("penalties/run-due")]
+    [Authorize(Policy = ServicingPolicy)]
+    public async Task<ActionResult<PenaltyRunResult>> RunDuePenalties([FromServices] ILoanPenaltyService penalties, CancellationToken cancellationToken) =>
+        Ok(await penalties.RunDueAsync(cancellationToken: cancellationToken));
+
     [HttpGet("late")]
     public async Task<ActionResult<PagedResult<LoanListItemResponse>>> Late(
+        [FromServices] IOverdueRulesProvider overdueRules,
         [FromQuery] int? officeId,
         [FromQuery] string? search,
         [FromQuery] int page = 1,
@@ -107,9 +124,11 @@ public class LoansController : ControllerBase
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var windowStart = today.AddYears(-1);
+        // Late only once the "repayment overdue after N days" threshold has passed (Settings → Loan).
+        var overdueBefore = today.AddDays(-(await overdueRules.GetAsync(cancellationToken)).RepaymentOverdueDays);
 
         var lateLoanIds = _db.LoanRepaymentSchedules
-            .Where(s => s.DueDate < today && s.DueDate >= windowStart
+            .Where(s => s.DueDate < overdueBefore && s.DueDate >= windowStart
                      && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)
                      && s.Loan!.Status == LoanStatus.Disbursed)
             .Select(s => s.LoanId)
@@ -228,6 +247,7 @@ public class LoansController : ControllerBase
     {
         LoanWriteOutcome.Success => Ok(ToResponse(result.Loan!)),
         LoanWriteOutcome.NotFound => NotFound(),
+        LoanWriteOutcome.InsufficientOfficeFunds => Problem(title: result.Error, statusCode: StatusCodes.Status409Conflict),
         LoanWriteOutcome.InvalidTransition => Problem(
             title: "This transition isn't valid from the loan's current status.",
             statusCode: StatusCodes.Status400BadRequest),

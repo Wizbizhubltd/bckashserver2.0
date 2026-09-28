@@ -27,7 +27,7 @@ public class PayrollTemplatesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<PayrollTemplateResponse>>> List(CancellationToken cancellationToken)
     {
-        var templates = await _db.PayrollTemplates.OrderBy(t => t.Name).ToListAsync(cancellationToken);
+        var templates = await _db.PayrollTemplates.OrderByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(templates.Select(ToResponse).ToList());
     }
 

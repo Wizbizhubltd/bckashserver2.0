@@ -139,6 +139,12 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IActiveSessionChecker, ActiveSessionChecker>();
         services.AddScoped<IOfficeService, OfficeService>();
+        services.AddScoped<ICompanyProfileProvider, CompanyProfileProvider>();
+        services.AddScoped<ICurrencyDisplayProvider, CurrencyDisplayProvider>();
+        services.AddScoped<IOfficeFundService, OfficeFundService>();
+        services.AddScoped<ILoanApplicationClientCodeService, LoanApplicationClientCodeService>();
+        services.AddScoped<IOverdueRulesProvider, OverdueRulesProvider>();
+        services.AddScoped<ILoanPenaltyService, LoanPenaltyService>();
         services.AddScoped<IClientService, ClientService>();
         services.AddScoped<IFileStorageService, LocalDiskFileStorageService>();
         services.AddScoped<IGroupService, GroupService>();
@@ -209,6 +215,9 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddScoped<IEmailSender, SmtpEmailSender>();
             services.AddHttpClient<ISmsSender, HttpSmsGatewaySender>();
             services.AddHttpClient<IOtpSmsSender, TermiiOtpSmsSender>();
+
+            // Tests drive penalty runs explicitly through ILoanPenaltyService / the run-due endpoint.
+            services.AddHostedService<DailyLoanPenaltyWorker>();
             services.AddSingleton<BackgroundOtpDispatcher>();
             services.AddSingleton<IOtpDispatcher>(sp => sp.GetRequiredService<BackgroundOtpDispatcher>());
             services.AddHostedService(sp => sp.GetRequiredService<BackgroundOtpDispatcher>());

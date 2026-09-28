@@ -41,7 +41,7 @@ public class GroupMembersController : ControllerBase
             query = query.Where(gc => gc.RemovedAt == null);
         }
 
-        var memberships = await query.ToListAsync(cancellationToken);
+        var memberships = await query.OrderByDescending(gc => gc.Id).ToListAsync(cancellationToken);
         var clientIds = memberships.Select(m => m.ClientId).Where(id => id.HasValue).Select(id => id!.Value).ToList();
         var clientsById = await _db.Clients
             .Where(c => clientIds.Contains(c.Id))

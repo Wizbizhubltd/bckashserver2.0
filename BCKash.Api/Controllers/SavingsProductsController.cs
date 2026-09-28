@@ -27,7 +27,7 @@ public class SavingsProductsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<SavingsProductResponse>>> List(CancellationToken cancellationToken)
     {
-        var products = await _db.SavingsProducts.ToListAsync(cancellationToken);
+        var products = await _db.SavingsProducts.OrderByDescending(p => p.Id).ToListAsync(cancellationToken);
         return Ok(products.Select(ToResponse).ToList());
     }
 

@@ -14,13 +14,16 @@ internal static class OtpDelivery
     // request failure — the OTP row already exists, so the user can still receive/retry it.
     public static async Task SendAsync(IEmailSender emailSender, IOtpSmsSender smsSender, ILogger logger, OtpMessage message, CancellationToken cancellationToken)
     {
-        try
+        if (!string.IsNullOrWhiteSpace(message.Email))
         {
-            await emailSender.SendAsync(message.Email, message.Subject, message.Body, null, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to email OTP to {Email}", message.Email);
+            try
+            {
+                await emailSender.SendAsync(message.Email, message.Subject, message.Body, null, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to email OTP to {Email}", message.Email);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(message.Phone))

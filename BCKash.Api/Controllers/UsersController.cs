@@ -106,6 +106,35 @@ public class UsersController : ControllerBase
         return user is null ? NotFound() : Ok(await ToResponseAsync(user, cancellationToken));
     }
 
+    /// <summary>The staff member's own actions from the audit trail, newest first.</summary>
+    [HttpGet("{id:int}/activity")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<ActionResult<PagedResult<UserActivityResponse>>> Activity(
+        int id,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _db.Users.AnyAsync(u => u.Id == id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+
+        var query = _db.AuditTrail.Where(a => a.UserId == id);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(a => a.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(a => new UserActivityResponse(a.Id, a.Module, a.Action, a.Notes, a.OfficeId, a.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        return Ok(new PagedResult<UserActivityResponse>(items, page, pageSize, totalCount));
+    }
+
     /// <summary>Initiates a new staff record. A super admin's creation is auto-approved; anyone else needs UserClass = Initiator and leaves it Pending for an Authorizer of the same user_type.</summary>
     [HttpPost]
     [Authorize(Policy = ManagePolicy)]
@@ -246,9 +275,23 @@ public class UsersController : ControllerBase
             .Where(slug => UserTypeSlugs.All.Contains(slug))
             .FirstOrDefaultAsync(cancellationToken);
 
+        var relatedIds = new[] { u.CreatedById, u.OnboardingApprovedById, u.UpdatedById }.Where(i => i.HasValue).Select(i => i!.Value).ToList();
+        var relatedNames = await _db.Users
+            .Where(r => relatedIds.Contains(r.Id))
+            .Select(r => new { r.Id, r.FirstName, r.LastName, r.Email })
+            .ToDictionaryAsync(
+                r => r.Id,
+                r => string.IsNullOrWhiteSpace($"{r.FirstName} {r.LastName}") ? r.Email : $"{r.FirstName} {r.LastName}".Trim(),
+                cancellationToken);
+
         return new UserResponse(
             u.Id, u.Email, u.FirstName, u.LastName, u.Phone, u.OfficeId, u.Office?.Name, userType, u.UserClass, u.Blocked,
             u.OnboardingStatus, u.CreatedById, u.OnboardingApprovedById, u.OnboardingApprovedDate,
-            u.OnboardingDeclinedById, u.OnboardingDeclinedDate, u.OnboardingDeclinedReason, u.LastLogin);
+            u.OnboardingDeclinedById, u.OnboardingDeclinedDate, u.OnboardingDeclinedReason, u.LastLogin,
+            u.Gender, u.Address, u.Notes, u.CreatedAt,
+            u.CreatedById.HasValue ? relatedNames.GetValueOrDefault(u.CreatedById.Value) : null,
+            u.OnboardingApprovedById.HasValue ? relatedNames.GetValueOrDefault(u.OnboardingApprovedById.Value) : null,
+            u.UpdatedAt,
+            u.UpdatedById.HasValue ? relatedNames.GetValueOrDefault(u.UpdatedById.Value) : null);
     }
 }

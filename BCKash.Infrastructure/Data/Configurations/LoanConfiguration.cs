@@ -33,6 +33,7 @@ public class LoanConfiguration : IEntityTypeConfiguration<Loan>
         builder.Property(l => l.AccountNumber).HasColumnName("account_number").HasMaxLength(191);
         builder.Property(l => l.ExternalId).HasColumnName("external_id").HasMaxLength(191);
         builder.Property(l => l.LoanOfficerId).HasColumnName("loan_officer_id");
+        builder.HasIndex(l => l.LoanOfficerId);
 
         builder.Property(l => l.Principal).HasColumnName("principal").HasPrecision(65, 4);
         builder.Property(l => l.AppliedAmount).HasColumnName("applied_amount").HasPrecision(65, 4);

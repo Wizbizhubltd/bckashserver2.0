@@ -34,6 +34,7 @@ public class ClientNotesController : ControllerBase
 
         var items = await _db.Notes
             .Where(n => n.Type == ReferenceEntityType.Client && n.ReferenceId == clientId)
+            .OrderByDescending(n => n.Id)
             .ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }

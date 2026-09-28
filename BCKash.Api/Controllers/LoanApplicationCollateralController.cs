@@ -30,7 +30,7 @@ public class LoanApplicationCollateralController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.Collateral.Where(c => c.LoanApplicationId == applicationId).ToListAsync(cancellationToken);
+        var items = await _db.Collateral.Where(c => c.LoanApplicationId == applicationId).OrderByDescending(c => c.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

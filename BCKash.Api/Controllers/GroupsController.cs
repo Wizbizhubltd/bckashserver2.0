@@ -65,7 +65,7 @@ public class GroupsController : ControllerBase
         var totalCount = await query.CountAsync(cancellationToken);
 
         var groups = await query
-            .OrderBy(g => g.Name)
+            .OrderByDescending(g => g.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);

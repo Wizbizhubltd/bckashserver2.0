@@ -24,7 +24,7 @@ public class PaymentTypesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<PaymentTypeResponse>>> List(CancellationToken cancellationToken)
     {
-        var paymentTypes = await _db.PaymentTypes.ToListAsync(cancellationToken);
+        var paymentTypes = await _db.PaymentTypes.OrderByDescending(p => p.Id).ToListAsync(cancellationToken);
         return Ok(paymentTypes.Select(ToResponse).ToList());
     }
 

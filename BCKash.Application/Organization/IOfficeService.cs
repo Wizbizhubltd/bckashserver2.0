@@ -15,6 +15,12 @@ public enum OfficeWriteOutcome
     /// <summary>The LGA isn't in the chosen state, the city isn't in the chosen LGA, or one of them doesn't exist.</summary>
     InvalidLocation,
     ZoneNotFound,
+
+    /// <summary>The chosen branch manager isn't an active staff member.</summary>
+    InvalidManager,
+
+    /// <summary>Another office already has this name (compared case-insensitively, ignoring surrounding spaces).</summary>
+    DuplicateName,
 }
 
 public record OfficeInUseCounts(int ActiveClientCount, int OpenLoanCount);
@@ -43,4 +49,7 @@ public interface IOfficeService
 
     /// <summary>Sets Active = true — reactivating never needs confirmation, unlike deactivating.</summary>
     Task<OfficeWriteResult> ActivateAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>Sets (or, with null, clears) the office's branch manager — who acknowledges or disputes its funding.</summary>
+    Task<OfficeWriteResult> AssignManagerAsync(int id, int? managerId, CancellationToken cancellationToken = default);
 }

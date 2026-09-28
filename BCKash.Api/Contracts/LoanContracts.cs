@@ -36,6 +36,8 @@ public record SaveLoanProductRequest(
     int? GlAccountReceivablePenaltyId, int? GlAccountLoanOverPaymentsId, int? GlAccountSuspendedIncomeId, int? GlAccountIncomeInterestId,
     int? GlAccountIncomeFeeId, int? GlAccountIncomePenaltyId, int? GlAccountIncomeRecoveryId, int? GlAccountLoansWrittenOffId);
 
+public record SetLoanProductChargesRequest(IReadOnlyList<int> ChargeIds);
+
 // ---- Loan Purposes / Collateral Types (simple lookups) ----
 
 public record LoanPurposeResponse(int Id, string? Name);
@@ -58,9 +60,17 @@ public record LoanApplicationResponse(
     int? LoanTerm, FrequencyType? LoanTermType, int? ApprovedById, int? DeclinedById,
     string? ApprovedNotes, string? DeclinedNotes, DateOnly? DeclinedDate, DateOnly? ApprovedDate, string? Notes);
 
+/// <summary><c>ClientCodeId</c>/<c>ClientCode</c>: needed for an individual client's application when client confirmation codes are on.</summary>
 public record CreateLoanApplicationRequest(
     LoanClientType ClientType, int? LoanPurposeId, int? CurrencyId, int? OfficeId, int? ClientId, int? GroupId,
-    int LoanProductId, decimal Amount, int? LoanTerm, FrequencyType? LoanTermType, string? Notes);
+    int LoanProductId, decimal Amount, int? LoanTerm, FrequencyType? LoanTermType, string? Notes,
+    int? ClientCodeId = null, string? ClientCode = null);
+
+/// <summary>Sends the client a confirmation code for an application staff are about to raise for them.</summary>
+public record RequestClientCodeRequest(int ClientId, int LoanProductId, decimal Amount);
+
+/// <summary><c>Required</c> false: codes are off, submit without one. Otherwise the code was sent to <c>SentTo</c>.</summary>
+public record ClientCodeResponse(bool Required, int? CodeId, string? SentTo, DateTime? ExpiresAtUtc, int ResendAfterSeconds);
 
 public record UpdateLoanApplicationRequest(
     LoanClientType ClientType, int? LoanPurposeId, int? CurrencyId, int? OfficeId, int? ClientId, int? GroupId,

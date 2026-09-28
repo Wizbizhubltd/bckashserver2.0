@@ -34,7 +34,7 @@ public class ClientIdentificationsController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.ClientIdentifications.Where(ci => ci.ClientId == clientId).ToListAsync(cancellationToken);
+        var items = await _db.ClientIdentifications.Where(ci => ci.ClientId == clientId).OrderByDescending(ci => ci.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

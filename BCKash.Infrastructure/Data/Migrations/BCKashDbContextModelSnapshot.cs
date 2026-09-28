@@ -2309,6 +2309,8 @@ namespace BCKash.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId");
+
                     b.ToTable("audit_trail", (string)null);
                 });
 
@@ -2721,6 +2723,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
+
+                    b.Property<int?>("UpdatedById")
+                        .HasColumnType("int")
+                        .HasColumnName("updated_by_id");
 
                     b.Property<string>("UserClass")
                         .HasMaxLength(20)
@@ -3367,6 +3373,8 @@ namespace BCKash.Infrastructure.Data.Migrations
 
                     b.HasIndex("ClientId");
 
+                    b.HasIndex("LoanOfficerId");
+
                     b.HasIndex("LoanProductId");
 
                     b.HasIndex("LoanPurposeId");
@@ -3502,6 +3510,71 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.ToTable("loan_applications", (string)null);
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Loans.LoanApplicationClientCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int")
+                        .HasColumnName("attempts");
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("int")
+                        .HasColumnName("client_id");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("consumed_at_utc");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("expires_at_utc");
+
+                    b.Property<int?>("LoanApplicationId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_application_id");
+
+                    b.Property<int>("LoanProductId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_product_id");
+
+                    b.Property<int?>("RequestedById")
+                        .HasColumnType("int")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<string>("SentTo")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("sent_to");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "CreatedAtUtc");
+
+                    b.ToTable("loan_application_client_codes", (string)null);
+                });
+
             modelBuilder.Entity("BCKash.Domain.Loans.LoanCharge", b =>
                 {
                     b.Property<int>("Id")
@@ -3570,6 +3643,61 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("LoanId");
 
                     b.ToTable("loan_charges", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Loans.LoanPenaltyApplication", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<int>("ChargeId")
+                        .HasColumnType("int")
+                        .HasColumnName("charge_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<int?>("LoanChargeId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_charge_id");
+
+                    b.Property<int>("LoanId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_id");
+
+                    b.Property<int?>("LoanTransactionId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_transaction_id");
+
+                    b.Property<int>("Occurrence")
+                        .HasColumnType("int")
+                        .HasColumnName("occurrence");
+
+                    b.Property<int>("ScheduleId")
+                        .HasColumnType("int")
+                        .HasColumnName("schedule_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId", "ChargeId", "ScheduleId", "Occurrence")
+                        .IsUnique()
+                        .HasDatabaseName("loan_penalty_applications_occurrence_unique");
+
+                    b.ToTable("loan_penalty_applications", (string)null);
                 });
 
             modelBuilder.Entity("BCKash.Domain.Loans.LoanProduct", b =>
@@ -4511,9 +4639,22 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("currency_id");
 
+                    b.Property<int?>("FreeAfterInstallments")
+                        .HasColumnType("int")
+                        .HasColumnName("free_after_installments");
+
                     b.Property<int?>("GlAccountIncomeId")
                         .HasColumnType("int")
                         .HasColumnName("gl_account_income_id");
+
+                    b.Property<int?>("GraceDays")
+                        .HasColumnType("int")
+                        .HasColumnName("grace_days");
+
+                    b.Property<decimal?>("MaxTotalPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("max_total_percent");
 
                     b.Property<decimal?>("MaximumAmount")
                         .HasPrecision(65, 2)
@@ -4543,6 +4684,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)")
                         .HasColumnName("product");
+
+                    b.Property<int?>("RepeatEveryDays")
+                        .HasColumnType("int")
+                        .HasColumnName("repeat_every_days");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)")
@@ -4988,6 +5133,311 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("ZoneId");
 
                     b.ToTable("offices", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Organization.OfficeBankAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)")
+                        .HasColumnName("account_name");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("account_number");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("active");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("int")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_default");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OfficeId");
+
+                    b.ToTable("office_bank_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Organization.OfficeFund", b =>
+                {
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<decimal>("Balance")
+                        .IsConcurrencyToken()
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("balance");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("OfficeId");
+
+                    b.ToTable("office_funds", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Organization.OfficeFundEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("balance_after");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("int")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("description");
+
+                    b.Property<int?>("FundingId")
+                        .HasColumnType("int")
+                        .HasColumnName("funding_id");
+
+                    b.Property<int?>("LoanId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_id");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId")
+                        .IsUnique()
+                        .HasDatabaseName("office_fund_entries_loan_unique");
+
+                    b.HasIndex("OfficeId");
+
+                    b.ToTable("office_fund_entries", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Organization.OfficeFundEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActorId")
+                        .HasColumnType("int")
+                        .HasColumnName("actor_id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<int?>("BankAccountId")
+                        .HasColumnType("int")
+                        .HasColumnName("bank_account_id");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("FundingId")
+                        .HasColumnType("int")
+                        .HasColumnName("funding_id");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OfficeId");
+
+                    b.ToTable("office_fund_events", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Organization.OfficeFunding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AcknowledgedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("acknowledged_at");
+
+                    b.Property<int?>("AcknowledgedById")
+                        .HasColumnType("int")
+                        .HasColumnName("acknowledged_by_id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(65, 2)
+                        .HasColumnType("decimal(65,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<int?>("BankAccountId")
+                        .HasColumnType("int")
+                        .HasColumnName("bank_account_id");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<int?>("CancelledById")
+                        .HasColumnType("int")
+                        .HasColumnName("cancelled_by_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisputeDocumentLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("dispute_document_location");
+
+                    b.Property<string>("DisputeDocumentName")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("dispute_document_name");
+
+                    b.Property<string>("DisputeReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("dispute_reason");
+
+                    b.Property<DateTime?>("DisputedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("disputed_at");
+
+                    b.Property<int?>("DisputedById")
+                        .HasColumnType("int")
+                        .HasColumnName("disputed_by_id");
+
+                    b.Property<int?>("FundedById")
+                        .HasColumnType("int")
+                        .HasColumnName("funded_by_id");
+
+                    b.Property<DateOnly>("FundedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("funded_on");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("reference");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OfficeId", "Reference")
+                        .IsUnique()
+                        .HasDatabaseName("office_fundings_reference_unique");
+
+                    b.ToTable("office_fundings", (string)null);
                 });
 
             modelBuilder.Entity("BCKash.Domain.Organization.PaymentDetail", b =>

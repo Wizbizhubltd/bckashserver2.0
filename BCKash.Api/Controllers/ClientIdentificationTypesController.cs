@@ -24,7 +24,7 @@ public class ClientIdentificationTypesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<ClientIdentificationTypeResponse>>> List(CancellationToken cancellationToken)
     {
-        var items = await _db.ClientIdentificationTypes.ToListAsync(cancellationToken);
+        var items = await _db.ClientIdentificationTypes.OrderByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

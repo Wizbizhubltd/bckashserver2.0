@@ -29,7 +29,7 @@ public class ClientNextOfGuardiansController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.ClientNextOfGuardians.Where(g => g.ClientId == clientId).ToListAsync(cancellationToken);
+        var items = await _db.ClientNextOfGuardians.Where(g => g.ClientId == clientId).OrderByDescending(g => g.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

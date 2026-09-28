@@ -1,5 +1,6 @@
 using BCKash.Application.Auth;
 using BCKash.Application.Communications;
+using BCKash.Application.Organization;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Auth;
 using BCKash.Infrastructure.Data;
@@ -14,8 +15,9 @@ namespace BCKash.Infrastructure.Identity;
 /// <summary>
 /// Seeds the RBAC scaffolding the new user_type/user_class model needs, and the very first
 /// super admin — idempotent (NFR-10), safe to run on every boot:
-/// 1. Every permission slug any controller currently checks for (a Permission row must exist
-///    for a role to be granted it — see BCKash.Api/Authorization/PermissionPolicyProvider.cs).
+/// 1. Every permission in PermissionCatalog — the ones controllers actually check (a Permission
+///    row must exist for a role to be granted it — see PermissionPolicyProvider), with its name
+///    and description kept up to date.
 /// 2. The five user_type roles (super_admin/controller/director/manager/marketer — see
 ///    UserTypeSlugs), each wired to a starting permission set. This is a reasonable default,
 ///    not a business-confirmed mapping — adjust via ordinary RolePermission rows at any time,
@@ -27,20 +29,7 @@ namespace BCKash.Infrastructure.Identity;
 /// </summary>
 public class IdentityBootstrapSeeder : IHostedService
 {
-    private static readonly string[] AllKnownPermissionSlugs =
-    [
-        "organization.manage", "clients.manage", "groups.manage",
-        "loan-products.manage", "loan-applications.manage", "loan-applications.approve", "loan-servicing.manage",
-        "savings-products.manage", "savings-accounts.manage",
-        "gl.manage", "gl.closure-reopen", "settings.manage",
-        "assets.manage",
-        "expenses.manage", "expenses.approve", "expense-budgets.manage", "expense-budgets.approve",
-        "other-income.manage", "other-income.approve",
-        "payroll.manage", "payroll.run",
-        "campaigns.manage", "campaigns.run",
-        "reports.view", "report-schedules.manage",
-        "users.manage",
-    ];
+    private static readonly string[] AllKnownPermissionSlugs = PermissionCatalog.All.Select(p => p.Slug).ToArray();
 
     private static readonly IReadOnlyDictionary<string, string[]> DefaultRolePermissions = new Dictionary<string, string[]>
     {
@@ -91,16 +80,18 @@ public class IdentityBootstrapSeeder : IHostedService
     {
         var existing = await db.Permissions.Where(p => p.Slug != null).ToDictionaryAsync(p => p.Slug!, cancellationToken);
 
-        foreach (var slug in AllKnownPermissionSlugs)
+        foreach (var definition in PermissionCatalog.All)
         {
-            if (existing.ContainsKey(slug))
+            if (!existing.TryGetValue(definition.Slug, out var permission))
             {
-                continue;
+                permission = new Permission { Slug = definition.Slug };
+                db.Permissions.Add(permission);
+                existing[definition.Slug] = permission;
             }
 
-            var permission = new Permission { Name = slug, Slug = slug };
-            db.Permissions.Add(permission);
-            existing[slug] = permission;
+            // Keep the readable name and description in step with the catalogue.
+            permission.Name = definition.Name;
+            permission.Description = definition.Description;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -134,8 +125,24 @@ public class IdentityBootstrapSeeder : IHostedService
         foreach (var (roleSlug, permissionSlugs) in DefaultRolePermissions)
         {
             var role = rolesBySlug[roleSlug];
-            var hasAny = await db.RolePermissions.AnyAsync(rp => rp.RoleId == role.Id, cancellationToken);
-            if (hasAny)
+            var granted = await db.RolePermissions.Where(rp => rp.RoleId == role.Id).Select(rp => rp.PermissionId).ToListAsync(cancellationToken);
+
+            // Super admin always holds every permission — including ones added to the catalogue
+            // after it was first seeded. Its permissions can't be edited (see RolesController).
+            if (roleSlug == UserTypeSlugs.SuperAdmin)
+            {
+                foreach (var permission in permissionsBySlug.Where(p => PermissionCatalog.Slugs.Contains(p.Key)).Select(p => p.Value))
+                {
+                    if (!granted.Contains(permission.Id))
+                    {
+                        db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
+                    }
+                }
+
+                continue;
+            }
+
+            if (granted.Count > 0)
             {
                 continue;
             }
@@ -167,6 +174,7 @@ public class IdentityBootstrapSeeder : IHostedService
 
         var passwordHasher = services.GetRequiredService<IPasswordHasher>();
         var emailSender = services.GetRequiredService<IEmailSender>();
+        var companyProfile = services.GetRequiredService<ICompanyProfileProvider>();
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
 
         var superAdmin = new User
@@ -201,14 +209,16 @@ public class IdentityBootstrapSeeder : IHostedService
         // so the account is still reachable.
         try
         {
+            var company = await companyProfile.GetAsync(cancellationToken);
             await emailSender.SendAsync(
                 superAdmin.Email,
-                "Your BCKash super admin account",
+                $"Your {company.Name} super admin account",
                 $"Hello {superAdmin.FirstName},\n\n" +
-                "A super admin account has been created for you on the BCKash portal.\n\n" +
+                $"A super admin account has been created for you on the {company.Name} portal.\n\n" +
                 $"Email: {superAdmin.Email}\n" +
                 $"Temporary password: {temporaryPassword}\n\n" +
-                "Please log in and change this password immediately.",
+                "Please log in and change this password immediately." +
+                company.EmailFooter,
                 null,
                 cancellationToken);
         }

@@ -132,6 +132,15 @@ public class OfficesController : ControllerBase
         };
     }
 
+    /// <summary>Assigns the office's branch manager without resubmitting the whole office. <c>managerId</c> null removes them.</summary>
+    [HttpPost("{id:int}/manager")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<IActionResult> AssignManager(int id, AssignOfficeManagerRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _officeService.AssignManagerAsync(id, request.ManagerId, cancellationToken);
+        return result.Outcome == OfficeWriteOutcome.Success ? await OkResponseAsync(id, cancellationToken) : ToProblem(result.Outcome);
+    }
+
     [HttpPost("{id:int}/activate")]
     [Authorize(Policy = ManagePolicy)]
     public async Task<IActionResult> Activate(int id, CancellationToken cancellationToken)
@@ -151,6 +160,8 @@ public class OfficesController : ControllerBase
             title: "The selected LGA must be in the selected state, and the city in the selected LGA.",
             statusCode: StatusCodes.Status400BadRequest),
         OfficeWriteOutcome.ZoneNotFound => Problem(title: "Zone not found.", statusCode: StatusCodes.Status400BadRequest),
+        OfficeWriteOutcome.InvalidManager => Problem(title: "The branch manager must be an active staff member.", statusCode: StatusCodes.Status400BadRequest),
+        OfficeWriteOutcome.DuplicateName => Problem(title: "An office with this name already exists.", statusCode: StatusCodes.Status409Conflict),
         _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
     };
 
@@ -165,7 +176,7 @@ public class OfficesController : ControllerBase
             .Include(o => o.Lga)
             .Include(o => o.City)
             .Include(o => o.Zone)
-            .OrderBy(o => o.Id)
+            .OrderByDescending(o => o.Id)
             .ToListAsync(cancellationToken);
 
         var officeIds = offices.Select(o => o.Id).ToList();

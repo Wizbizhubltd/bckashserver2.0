@@ -81,6 +81,13 @@ public class BCKashDbContext : DbContext
     public DbSet<LoanApplication> LoanApplications => Set<LoanApplication>();
     public DbSet<LoanProduct> LoanProducts => Set<LoanProduct>();
     public DbSet<LoanProductCharge> LoanProductCharges => Set<LoanProductCharge>();
+    public DbSet<LoanApplicationClientCode> LoanApplicationClientCodes => Set<LoanApplicationClientCode>();
+    public DbSet<LoanPenaltyApplication> LoanPenaltyApplications => Set<LoanPenaltyApplication>();
+    public DbSet<OfficeBankAccount> OfficeBankAccounts => Set<OfficeBankAccount>();
+    public DbSet<OfficeFunding> OfficeFundings => Set<OfficeFunding>();
+    public DbSet<OfficeFund> OfficeFunds => Set<OfficeFund>();
+    public DbSet<OfficeFundEntry> OfficeFundEntries => Set<OfficeFundEntry>();
+    public DbSet<OfficeFundEvent> OfficeFundEvents => Set<OfficeFundEvent>();
     public DbSet<LoanCharge> LoanCharges => Set<LoanCharge>();
     public DbSet<LoanPurpose> LoanPurposes => Set<LoanPurpose>();
     public DbSet<LoanRepaymentSchedule> LoanRepaymentSchedules => Set<LoanRepaymentSchedule>();

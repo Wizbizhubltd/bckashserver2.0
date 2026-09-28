@@ -96,7 +96,7 @@ public class ClientsController : ControllerBase
         var totalCount = await query.CountAsync(cancellationToken);
 
         var clients = await query
-            .OrderBy(c => c.LastName).ThenBy(c => c.FirstName)
+            .OrderByDescending(c => c.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);

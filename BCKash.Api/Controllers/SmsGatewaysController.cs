@@ -27,7 +27,7 @@ public class SmsGatewaysController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SmsGatewayResponse>>> List(CancellationToken cancellationToken)
     {
-        var gateways = await _db.SmsGateways.OrderBy(g => g.Name).ToListAsync(cancellationToken);
+        var gateways = await _db.SmsGateways.OrderByDescending(g => g.Id).ToListAsync(cancellationToken);
         return Ok(gateways.Select(ToResponse).ToList());
     }
 

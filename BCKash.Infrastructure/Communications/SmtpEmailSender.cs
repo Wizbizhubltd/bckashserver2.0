@@ -1,4 +1,5 @@
 using BCKash.Application.Communications;
+using BCKash.Application.Organization;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Options;
@@ -10,16 +11,25 @@ namespace BCKash.Infrastructure.Communications;
 public class SmtpEmailSender : IEmailSender
 {
     private readonly EmailSettings _settings;
+    private readonly ICompanyProfileProvider _companyProfile;
 
-    public SmtpEmailSender(IOptions<EmailSettings> settings)
+    public SmtpEmailSender(IOptions<EmailSettings> settings, ICompanyProfileProvider companyProfile)
     {
         _settings = settings.Value;
+        _companyProfile = companyProfile;
     }
 
     public async Task SendAsync(string toAddress, string subject, string body, IReadOnlyList<EmailAttachment>? attachments = null, CancellationToken cancellationToken = default)
     {
+        // The sending address stays the configured one (the relay only accepts verified senders);
+        // the display name and reply-to come from the company profile, so replies reach the business.
+        var company = await _companyProfile.GetAsync(cancellationToken);
         var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(_settings.FromName, _settings.FromAddress));
+        message.From.Add(new MailboxAddress(company.Name, _settings.FromAddress));
+        if (company.Email is not null)
+        {
+            message.ReplyTo.Add(new MailboxAddress(company.Name, company.Email));
+        }
         message.To.Add(MailboxAddress.Parse(toAddress));
         message.Subject = subject;
 

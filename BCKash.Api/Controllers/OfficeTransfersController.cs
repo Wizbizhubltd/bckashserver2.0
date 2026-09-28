@@ -27,7 +27,7 @@ public class OfficeTransfersController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<OfficeTransactionResponse>>> List(CancellationToken cancellationToken)
     {
-        var transactions = await _db.OfficeTransactions.OrderByDescending(t => t.Date).ToListAsync(cancellationToken);
+        var transactions = await _db.OfficeTransactions.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(transactions.Select(ToResponse).ToList());
     }
 

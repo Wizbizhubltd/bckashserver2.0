@@ -8,9 +8,12 @@ public enum LoanWriteOutcome
     NotFound,
     InvalidTransition,
     ReasonRequired,
+
+    /// <summary>"Loans draw on office funds" is on and the office's balance can't cover the disbursement — see Error.</summary>
+    InsufficientOfficeFunds,
 }
 
-public record LoanWriteResult(LoanWriteOutcome Outcome, Loan? Loan = null);
+public record LoanWriteResult(LoanWriteOutcome Outcome, Loan? Loan = null, string? Error = null);
 
 /// <summary>
 /// FR-LN-7's need-changes/pending cycle, plus FR-LN-8's bare disbursement transition — see

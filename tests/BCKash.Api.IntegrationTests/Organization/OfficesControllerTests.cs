@@ -119,6 +119,35 @@ public class OfficesControllerTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Creating_an_office_with_a_name_already_in_use_is_rejected()
+    {
+        var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-dup-create@bckash.test", "organization.manage");
+
+        var first = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Ikeja Branch", null, false));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // Different case and stray spaces still count as the same name.
+        var duplicate = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("  ikeja BRANCH ", null, false));
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+    }
+
+    [Fact]
+    public async Task Renaming_an_office_to_another_offices_name_is_rejected_but_keeping_its_own_name_is_not()
+    {
+        var client = await AuthenticatedClientFactory.CreateAsync(_factory, "office-dup-update@bckash.test", "organization.manage");
+
+        await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Yaba Branch", null, false));
+        var otherResponse = await client.PostAsJsonAsync("/api/v1/offices", await OfficeRequestAsync("Surulere Branch", null, false));
+        var other = await otherResponse.Content.ReadFromJsonAsync<OfficeResponse>();
+
+        var rename = await client.PutAsJsonAsync($"/api/v1/offices/{other!.Id}", await OfficeRequestAsync("Yaba Branch", null, false));
+        Assert.Equal(HttpStatusCode.Conflict, rename.StatusCode);
+
+        var keep = await client.PutAsJsonAsync($"/api/v1/offices/{other.Id}", await OfficeRequestAsync("Surulere Branch", null, false));
+        Assert.Equal(HttpStatusCode.OK, keep.StatusCode);
+    }
+
     private async Task<SaveOfficeRequest> OfficeRequestAsync(string name, int? parentId, bool defaultOffice)
     {
         using var scope = _factory.Services.CreateScope();

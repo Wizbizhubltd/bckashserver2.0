@@ -45,6 +45,9 @@ public class User : IHasTimestamps, IAuditable
     // onboarding flow start Pending. See docs/staff-onboarding-rbac-spec.md.
     public UserClass? UserClass { get; set; }
     public int? CreatedById { get; set; }
+
+    /// <summary>Who last changed the record through a staff-management action (not sign-ins).</summary>
+    public int? UpdatedById { get; set; }
     public UserOnboardingStatus OnboardingStatus { get; set; } = UserOnboardingStatus.Approved;
     public int? OnboardingApprovedById { get; set; }
     public DateOnly? OnboardingApprovedDate { get; set; }

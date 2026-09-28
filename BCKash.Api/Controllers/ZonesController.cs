@@ -127,7 +127,7 @@ public class ZonesController : ControllerBase
 
     private async Task<List<ZoneResponse>> ToResponsesAsync(IQueryable<Zone> query, CancellationToken cancellationToken)
     {
-        var zones = await query.OrderBy(z => z.Name).ToListAsync(cancellationToken);
+        var zones = await query.OrderByDescending(z => z.Id).ToListAsync(cancellationToken);
         var zoneIds = zones.Select(z => z.Id).ToList();
 
         var offices = await _db.Offices

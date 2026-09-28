@@ -39,6 +39,7 @@ public class DocumentsController : ControllerBase
 
         var items = await _db.Documents
             .Where(d => d.Type == ReferenceEntityType.Client && d.RecordId == clientId)
+            .OrderByDescending(d => d.Id)
             .ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }

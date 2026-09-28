@@ -1,6 +1,7 @@
 using BCKash.Application.Auth;
 using BCKash.Application.Communications;
 using BCKash.Application.Identity;
+using BCKash.Application.Organization;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Auth;
 using BCKash.Infrastructure.Data;
@@ -18,9 +19,11 @@ public class UserService : IUserService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IEmailSender _emailSender;
     private readonly ILogger<UserService> _logger;
+    private readonly ICompanyProfileProvider _companyProfile;
 
-    public UserService(BCKashDbContext db, ICurrentUserContext currentUser, IPasswordHasher passwordHasher, IEmailSender emailSender, ILogger<UserService> logger)
+    public UserService(BCKashDbContext db, ICurrentUserContext currentUser, IPasswordHasher passwordHasher, IEmailSender emailSender, ILogger<UserService> logger, ICompanyProfileProvider companyProfile)
     {
+        _companyProfile = companyProfile;
         _db = db;
         _currentUser = currentUser;
         _passwordHasher = passwordHasher;
@@ -61,6 +64,8 @@ public class UserService : IUserService
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         newUser.PasswordHash = _passwordHasher.Hash(temporaryPassword);
         newUser.CreatedById = actingUserId;
+        newUser.CreatedAt = DateTime.UtcNow;
+        newUser.UpdatedAt = newUser.CreatedAt;
 
         // Everyone but a super admin must replace the emailed temporary password on first sign-in.
         newUser.MustChangePassword = userTypeSlug != UserTypeSlugs.SuperAdmin;
@@ -111,6 +116,7 @@ public class UserService : IUserService
         user.OnboardingApprovedById = _currentUser.UserId;
         user.OnboardingApprovedDate = DateOnly.FromDateTime(DateTime.UtcNow);
 
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -145,6 +151,7 @@ public class UserService : IUserService
         user.OnboardingDeclinedReason = reason;
         user.Blocked = true; // a declined staff record must never be able to log in
 
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -164,6 +171,7 @@ public class UserService : IUserService
         user.Notes = updated.Notes;
         user.Gender = updated.Gender;
 
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -182,6 +190,7 @@ public class UserService : IUserService
         }
 
         user.OfficeId = officeId;
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -208,6 +217,7 @@ public class UserService : IUserService
         _db.RoleUsers.RemoveRange(existingTypeAssignments);
 
         _db.RoleUsers.Add(new RoleUser { UserId = userId, RoleId = role.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
 
         return new UserWriteResult(UserWriteOutcome.Success, user);
@@ -222,6 +232,7 @@ public class UserService : IUserService
         }
 
         user.UserClass = userClass;
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -235,6 +246,7 @@ public class UserService : IUserService
         }
 
         user.Blocked = true;
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -248,6 +260,7 @@ public class UserService : IUserService
         }
 
         user.Blocked = false;
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
         return new UserWriteResult(UserWriteOutcome.Success, user);
     }
@@ -265,11 +278,22 @@ public class UserService : IUserService
 
         // Same rule as a new account: the emailed temporary password must be replaced on next sign-in.
         user.MustChangePassword = !await IsSuperAdminAsync(user.Id, cancellationToken);
+        MarkUpdated(user);
         await _db.SaveChangesAsync(cancellationToken);
 
         await SendCredentialsEmailAsync(user, temporaryPassword, cancellationToken, isReset: true);
 
         return new UserWriteResult(UserWriteOutcome.Success, user);
+    }
+
+    /// <summary>
+    /// Records who last changed the staff record and when. Called by the admin actions only — sign-ins
+    /// and session changes also save the user row, but they aren't edits to the record.
+    /// </summary>
+    private void MarkUpdated(User user)
+    {
+        user.UpdatedById = _currentUser.UserId;
+        user.UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>Null means authorized (either a super admin, or a valid same-user_type Authorizer); otherwise the specific failure to return.</summary>
@@ -310,13 +334,16 @@ public class UserService : IUserService
 
     private async Task SendCredentialsEmailAsync(User user, string temporaryPassword, CancellationToken cancellationToken, bool isReset = false)
     {
-        var subject = isReset ? "Your BCKash password has been reset" : "Welcome to BCKash — your account details";
+        var company = await _companyProfile.GetAsync(cancellationToken);
+        var subject = isReset ? $"Your {company.Name} password has been reset" : $"Welcome to {company.Name} — your account details";
         var body =
             $"Hello {user.FirstName},\n\n" +
-            $"{(isReset ? "Your BCKash portal password has been reset." : "An account has been created for you on the BCKash portal.")}\n\n" +
+            $"{(isReset ? $"Your {company.Name} portal password has been reset." : $"An account has been created for you on the {company.Name} portal.")}\n\n" +
             $"Email: {user.Email}\n" +
             $"Temporary password: {temporaryPassword}\n\n" +
-            "Please log in and change this password as soon as possible.";
+            (company.PortalAddress is null ? string.Empty : $"Sign in at {company.PortalAddress}\n\n") +
+            "Please log in and change this password as soon as possible." +
+            company.EmailFooter;
 
         // Best-effort — a staff record is already committed by the time this runs; a
         // transient email failure must not turn an otherwise-successful create/reset into an

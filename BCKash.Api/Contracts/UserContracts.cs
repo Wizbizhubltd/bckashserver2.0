@@ -40,4 +40,25 @@ public record UserResponse(
     int? OnboardingDeclinedById,
     DateOnly? OnboardingDeclinedDate,
     string? OnboardingDeclinedReason,
-    DateTime? LastLogin);
+    DateTime? LastLogin,
+    Gender Gender,
+    string? Address,
+    string? Notes,
+    DateTime? CreatedAt,
+    string? CreatedByName,
+    string? OnboardingApprovedByName,
+    DateTime? UpdatedAt,
+    string? UpdatedByName);
+
+/// <summary>One audit-trail entry recorded against a staff member's actions.</summary>
+public record UserActivityResponse(int Id, string? Module, string? Action, string? Notes, int? OfficeId, DateTime? CreatedAt);
+
+// ---- Roles & permissions ----
+
+/// <summary>A permission a role can be granted — see PermissionCatalog.</summary>
+public record PermissionResponse(string Slug, string Area, string Name, string Description);
+
+/// <summary><c>Locked</c>: super admin always has every permission and can't be edited.</summary>
+public record RoleResponse(int Id, string Slug, string Name, int StaffCount, bool Locked, IReadOnlyList<string> Permissions);
+
+public record SetRolePermissionsRequest(IReadOnlyList<string> Permissions);

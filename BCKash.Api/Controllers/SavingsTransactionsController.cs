@@ -29,7 +29,7 @@ public class SavingsTransactionsController : ControllerBase
     {
         var transactions = await _db.SavingsTransactions
             .Where(t => t.SavingsId == accountId)
-            .OrderByDescending(t => t.Date)
+            .OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
             .ThenByDescending(t => t.Id)
             .ToListAsync(cancellationToken);
         return Ok(transactions.Select(ToResponse).ToList());

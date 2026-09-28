@@ -52,6 +52,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasMaxLength(20);
 
         builder.Property(u => u.CreatedById).HasColumnName("created_by_id");
+        builder.Property(u => u.UpdatedById).HasColumnName("updated_by_id");
 
         builder.Property(u => u.OnboardingStatus)
             .HasColumnName("onboarding_status")

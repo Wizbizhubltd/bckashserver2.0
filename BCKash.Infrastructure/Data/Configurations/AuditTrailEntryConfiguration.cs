@@ -21,6 +21,9 @@ public class AuditTrailEntryConfiguration : IEntityTypeConfiguration<AuditTrailE
         builder.Property(a => a.CreatedAt).HasColumnName("created_at");
         builder.Property(a => a.UpdatedAt).HasColumnName("updated_at");
 
+        // Staff record → Activity tab: one user's entries, newest first.
+        builder.HasIndex(a => a.UserId);
+
         // No FK — legacy has none, and audit rows must survive the referenced user being deleted.
     }
 }

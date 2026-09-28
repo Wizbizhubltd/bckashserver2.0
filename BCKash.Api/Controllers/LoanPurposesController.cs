@@ -24,7 +24,7 @@ public class LoanPurposesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<LoanPurposeResponse>>> List(CancellationToken cancellationToken)
     {
-        var items = await _db.LoanPurposes.ToListAsync(cancellationToken);
+        var items = await _db.LoanPurposes.OrderByDescending(p => p.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

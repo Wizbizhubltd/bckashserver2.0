@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using BCKash.Application.Auth;
+using BCKash.Application.Organization;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,7 @@ public class AuthService : IAuthService
     private readonly ILoginThrottleService _throttleService;
     private readonly IPermissionService _permissionService;
     private readonly IOtpDispatcher _otpDispatcher;
+    private readonly ICompanyProfileProvider _companyProfile;
     private readonly JwtSettings _jwtSettings;
     private readonly OtpSettings _otpSettings;
 
@@ -34,10 +36,12 @@ public class AuthService : IAuthService
         ILoginThrottleService throttleService,
         IPermissionService permissionService,
         IOtpDispatcher otpDispatcher,
+        ICompanyProfileProvider companyProfile,
         IOptions<JwtSettings> jwtSettings,
         IOptions<OtpSettings> otpSettings)
     {
         _db = db;
+        _companyProfile = companyProfile;
         _passwordHasher = passwordHasher;
         _totpService = totpService;
         _jwtTokenService = jwtTokenService;
@@ -203,10 +207,11 @@ public class AuthService : IAuthService
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
 
+        var companyName = (await _companyProfile.GetAsync(cancellationToken)).Name;
         await SendOtpAsync(
             user,
-            "Your BCKash password reset code",
-            $"Your BCKash password reset code is {code}. It expires in {(int)PasswordResetOtpLifetime.TotalMinutes} minutes. If you didn't request this, ignore this message.",
+            $"Your {companyName} password reset code",
+            $"Your {companyName} password reset code is {code}. It expires in {(int)PasswordResetOtpLifetime.TotalMinutes} minutes. If you didn't request this, ignore this message.",
             cancellationToken);
 
         return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.Accepted,
@@ -412,10 +417,11 @@ public class AuthService : IAuthService
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
 
+        var companyName = (await _companyProfile.GetAsync(cancellationToken)).Name;
         await SendOtpAsync(
             user,
-            "Your BCKash login code",
-            $"Your BCKash login verification code is {code}. It expires in 5 minutes.",
+            $"Your {companyName} login code",
+            $"Your {companyName} login verification code is {code}. It expires in 5 minutes.",
             cancellationToken);
 
         return _jwtTokenService.GenerateLoginOtpChallengeToken(user.Id, otp.Id);

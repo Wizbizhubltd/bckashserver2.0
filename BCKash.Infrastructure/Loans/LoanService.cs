@@ -1,4 +1,5 @@
 using BCKash.Application.Loans;
+using BCKash.Application.Organization;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
@@ -12,8 +13,11 @@ public class LoanService : ILoanService
     private readonly ICurrentUserContext _currentUser;
     private readonly ILoanGlPostingService _glPostingService;
 
-    public LoanService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanGlPostingService glPostingService)
+    private readonly IOfficeFundService _officeFunds;
+
+    public LoanService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanGlPostingService glPostingService, IOfficeFundService officeFunds)
     {
+        _officeFunds = officeFunds;
         _db = db;
         _currentUser = currentUser;
         _glPostingService = glPostingService;
@@ -161,7 +165,26 @@ public class LoanService : ILoanService
         };
         _db.LoanTransactions.Add(disbursementTransaction);
 
-        await _db.SaveChangesAsync(cancellationToken);
+        // When loans draw on office funds, the deduction is saved together with the disbursement —
+        // both happen or neither does.
+        var fundsProblem = await _officeFunds.StageDisbursementAsync(loan, disbursedAmount, cancellationToken);
+        if (fundsProblem is not null)
+        {
+            _db.ChangeTracker.Clear();
+            return new LoanWriteResult(LoanWriteOutcome.InsufficientOfficeFunds, Error: fundsProblem);
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another disbursement from the same office changed its balance first.
+            _db.ChangeTracker.Clear();
+            return new LoanWriteResult(LoanWriteOutcome.InsufficientOfficeFunds, Error: "The office's funds changed while this loan was being disbursed. Try again.");
+        }
+
         await _glPostingService.PostDisbursementAsync(loan, disbursementTransaction, cancellationToken);
 
         return new LoanWriteResult(LoanWriteOutcome.Success, loan);

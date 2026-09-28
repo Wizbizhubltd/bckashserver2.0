@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using BCKash.Api.Contracts;
 using BCKash.Domain.Loans;
+using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -121,5 +122,36 @@ public class LoanProductsControllerTests : IClassFixture<BCKashWebApplicationFac
         var activateResponse = await client.PostAsync($"/api/v1/loan-products/{created.Id}/activate", null);
         var activated = await activateResponse.Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
         Assert.True(activated!.Active);
+    }
+
+    [Fact]
+    public async Task Product_names_are_unique_ignoring_case()
+    {
+        var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-unique@bckash.test", "loan-products.manage");
+
+        await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Market Women Loan"));
+        var duplicate = await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest(" market women LOAN "));
+
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+    }
+
+    [Fact]
+    public async Task Fees_and_penalties_can_be_attached_to_a_product()
+    {
+        var client = await AuthenticatedClientFactory.CreateAsync(_factory, "product-charges@bckash.test", ["loan-products.manage", "organization.manage"]);
+        var product = await (await client.PostAsJsonAsync("/api/v1/loan-products", NewProductRequest("Charged Product")))
+            .Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options);
+        var fee = await (await client.PostAsJsonAsync("/api/v1/charges", new SaveChargeRequest(
+                "Product processing fee", null, ChargeProduct.Loan, ChargeType.Disbursement, ChargeOption.Flat,
+                0, ChargeFrequencyType.Days, 0, 1000m, null, null, ChargePaymentMode.Regular, false, false, null)))
+            .Content.ReadFromJsonAsync<ChargeResponse>(TestJson.Options);
+
+        var set = await client.PutAsJsonAsync($"/api/v1/loan-products/{product!.Id}/charges", new SetLoanProductChargesRequest([fee!.Id]));
+        Assert.Equal(HttpStatusCode.OK, set.StatusCode);
+        Assert.Equal([fee.Id], await client.GetFromJsonAsync<List<int>>($"/api/v1/loan-products/{product.Id}/charges"));
+
+        var cleared = await client.PutAsJsonAsync($"/api/v1/loan-products/{product.Id}/charges", new SetLoanProductChargesRequest([]));
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        Assert.Empty((await client.GetFromJsonAsync<List<int>>($"/api/v1/loan-products/{product.Id}/charges"))!);
     }
 }

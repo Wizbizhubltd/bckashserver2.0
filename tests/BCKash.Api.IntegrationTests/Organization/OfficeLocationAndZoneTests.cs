@@ -89,7 +89,7 @@ public class OfficeLocationAndZoneTests : IClassFixture<BCKashWebApplicationFact
         var inCityB = await client.GetFromJsonAsync<List<OfficeResponse>>($"/api/v1/offices?cityId={zoneB.CityId}");
         var heads = await client.GetFromJsonAsync<List<OfficeResponse>>("/api/v1/offices?type=head");
 
-        Assert.Equal([head.Id, branchA.Id], inZoneA!.Select(o => o.Id));
+        Assert.Equal([branchA.Id, head.Id], inZoneA!.Select(o => o.Id)); // newest first
         Assert.Equal([branchA.Id], branchesInZoneA!.Select(o => o.Id));
         Assert.Equal([branchB.Id], inCityB!.Select(o => o.Id));
         Assert.All(heads!, o => Assert.True(o.DefaultOffice));
