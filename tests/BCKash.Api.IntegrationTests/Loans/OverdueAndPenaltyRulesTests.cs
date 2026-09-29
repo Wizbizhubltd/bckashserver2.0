@@ -60,8 +60,14 @@ public class OverdueAndPenaltyRulesTests : IClassFixture<BCKashWebApplicationFac
             var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
             var charge = new Charge
             {
-                Name = "Late fee (test)", Product = ChargeProduct.Loan, ChargeType = ChargeType.OverdueInstallmentFee,
-                ChargeOption = ChargeOption.InstallmentPrincipalInterestDue, Amount = 5, Penalty = true, GraceDays = 3, Active = true,
+                Name = "Late fee (test)",
+                Product = ChargeProduct.Loan,
+                ChargeType = ChargeType.OverdueInstallmentFee,
+                ChargeOption = ChargeOption.InstallmentPrincipalInterestDue,
+                Amount = 5,
+                Penalty = true,
+                GraceDays = 3,
+                Active = true,
             };
             db.Charges.Add(charge);
             await db.SaveChangesAsync();

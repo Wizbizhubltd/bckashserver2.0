@@ -7,9 +7,17 @@ public class LoanProductRulesTests
 {
     private static LoanProduct Valid() => new()
     {
-        Name = "Salary Advance", MinimumPrincipal = 10_000, DefaultPrincipal = 50_000, MaximumPrincipal = 200_000,
-        MinimumLoanTerm = 1, DefaultLoanTerm = 3, MaximumLoanTerm = 6, RepaymentFrequency = 1,
-        MinimumInterestRate = 3, DefaultInterestRate = 5, MaximumInterestRate = 7,
+        Name = "Salary Advance",
+        MinimumPrincipal = 10_000,
+        DefaultPrincipal = 50_000,
+        MaximumPrincipal = 200_000,
+        MinimumLoanTerm = 1,
+        DefaultLoanTerm = 3,
+        MaximumLoanTerm = 6,
+        RepaymentFrequency = 1,
+        MinimumInterestRate = 3,
+        DefaultInterestRate = 5,
+        MaximumInterestRate = 7,
     };
 
     [Fact]

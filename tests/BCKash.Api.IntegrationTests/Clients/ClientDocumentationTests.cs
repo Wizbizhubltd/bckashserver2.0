@@ -278,8 +278,12 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
             var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
             db.Loans.Add(new Domain.Loans.Loan
             {
-                ClientId = clientId, OfficeId = officeId, ClientType = Domain.Loans.LoanClientType.Client,
-                Status = Domain.Loans.LoanStatus.Disbursed, AccountNumber = "LN-TEST-1", ApprovedAmount = 50_000,
+                ClientId = clientId,
+                OfficeId = officeId,
+                ClientType = Domain.Loans.LoanClientType.Client,
+                Status = Domain.Loans.LoanStatus.Disbursed,
+                AccountNumber = "LN-TEST-1",
+                ApprovedAmount = 50_000,
             });
             await db.SaveChangesAsync();
         }
@@ -311,13 +315,23 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
             await db.SaveChangesAsync();
             db.LoanApplications.Add(new Domain.Loans.LoanApplication
             {
-                ClientType = Domain.Loans.LoanClientType.Client, ClientId = clientId, OfficeId = client.OfficeId, Amount = 40_000, LoanProductId = product.Id,
-                Status = Domain.Loans.ApprovalStatus.Pending, CreatedAt = DateTime.UtcNow,
+                ClientType = Domain.Loans.LoanClientType.Client,
+                ClientId = clientId,
+                OfficeId = client.OfficeId,
+                Amount = 40_000,
+                LoanProductId = product.Id,
+                Status = Domain.Loans.ApprovalStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
             });
             db.Loans.Add(new Domain.Loans.Loan
             {
-                ClientId = clientId, OfficeId = client.OfficeId, ClientType = Domain.Loans.LoanClientType.Client, Status = Domain.Loans.LoanStatus.Closed,
-                AccountNumber = "LN-OLD-1", ApprovedAmount = 150_000, ApprovedDate = new DateOnly(2026, 1, 10),
+                ClientId = clientId,
+                OfficeId = client.OfficeId,
+                ClientType = Domain.Loans.LoanClientType.Client,
+                Status = Domain.Loans.LoanStatus.Closed,
+                AccountNumber = "LN-OLD-1",
+                ApprovedAmount = 150_000,
+                ApprovedDate = new DateOnly(2026, 1, 10),
             });
             await db.SaveChangesAsync();
         }

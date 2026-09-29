@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using BCKash.Api.Contracts;
 using BCKash.Application.Auth;
 using Microsoft.AspNetCore.Authorization;

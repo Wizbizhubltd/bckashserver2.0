@@ -88,8 +88,14 @@ public class OfficeFundService : IOfficeFundService
 
         var account = new OfficeBankAccount
         {
-            OfficeId = officeId, BankName = bankName, AccountName = accountName, AccountNumber = accountNumber,
-            IsDefault = isDefault, CreatedById = _currentUser.UserId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            OfficeId = officeId,
+            BankName = bankName,
+            AccountName = accountName,
+            AccountNumber = accountNumber,
+            IsDefault = isDefault,
+            CreatedById = _currentUser.UserId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         };
         _db.OfficeBankAccounts.Add(account);
         await _db.SaveChangesAsync(cancellationToken);
@@ -168,9 +174,15 @@ public class OfficeFundService : IOfficeFundService
 
         var funding = new OfficeFunding
         {
-            OfficeId = officeId, Amount = amount, Reference = reference, FundedOn = fundedOn ?? today, BankAccountId = defaultAccount.Id,
-            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(), FundedById = _currentUser.UserId,
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            OfficeId = officeId,
+            Amount = amount,
+            Reference = reference,
+            FundedOn = fundedOn ?? today,
+            BankAccountId = defaultAccount.Id,
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            FundedById = _currentUser.UserId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         };
         _db.OfficeFundings.Add(funding);
         await _db.SaveChangesAsync(cancellationToken);
@@ -200,8 +212,14 @@ public class OfficeFundService : IOfficeFundService
         fund.UpdatedAt = DateTime.UtcNow;
         _db.OfficeFundEntries.Add(new OfficeFundEntry
         {
-            OfficeId = funding.OfficeId, Type = OfficeFundEntryType.Funding, Amount = funding.Amount, BalanceAfter = fund.Balance,
-            FundingId = funding.Id, Description = $"Funding {funding.Reference}", CreatedById = _currentUser.UserId, CreatedAt = DateTime.UtcNow,
+            OfficeId = funding.OfficeId,
+            Type = OfficeFundEntryType.Funding,
+            Amount = funding.Amount,
+            BalanceAfter = fund.Balance,
+            FundingId = funding.Id,
+            Description = $"Funding {funding.Reference}",
+            CreatedById = _currentUser.UserId,
+            CreatedAt = DateTime.UtcNow,
         });
         Log(funding.OfficeId, OfficeFundEventType.FundingAcknowledged, fundingId: funding.Id, amount: funding.Amount, comment: comment?.Trim());
 
@@ -318,8 +336,14 @@ public class OfficeFundService : IOfficeFundService
         fund.UpdatedAt = DateTime.UtcNow;
         _db.OfficeFundEntries.Add(new OfficeFundEntry
         {
-            OfficeId = officeId, Type = OfficeFundEntryType.LoanDisbursement, Amount = -amount, BalanceAfter = fund.Balance,
-            LoanId = loan.Id, Description = $"Loan {loan.AccountNumber ?? loan.Id.ToString()} disbursed", CreatedById = _currentUser.UserId, CreatedAt = DateTime.UtcNow,
+            OfficeId = officeId,
+            Type = OfficeFundEntryType.LoanDisbursement,
+            Amount = -amount,
+            BalanceAfter = fund.Balance,
+            LoanId = loan.Id,
+            Description = $"Loan {loan.AccountNumber ?? loan.Id.ToString()} disbursed",
+            CreatedById = _currentUser.UserId,
+            CreatedAt = DateTime.UtcNow,
         });
         return null;
     }
@@ -386,8 +410,14 @@ public class OfficeFundService : IOfficeFundService
     private void Log(int officeId, OfficeFundEventType type, int? fundingId = null, int? bankAccountId = null, decimal? amount = null, string? comment = null) =>
         _db.OfficeFundEvents.Add(new OfficeFundEvent
         {
-            OfficeId = officeId, Type = type, FundingId = fundingId, BankAccountId = bankAccountId, Amount = amount,
-            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment, ActorId = _currentUser.UserId, CreatedAt = DateTime.UtcNow,
+            OfficeId = officeId,
+            Type = type,
+            FundingId = fundingId,
+            BankAccountId = bankAccountId,
+            Amount = amount,
+            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment,
+            ActorId = _currentUser.UserId,
+            CreatedAt = DateTime.UtcNow,
         });
 
     private static OfficeFundResult<T> Invalid<T>(string error) => OfficeFundResult<T>.Fail(OfficeFundOutcome.Invalid, error);

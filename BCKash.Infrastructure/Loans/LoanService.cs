@@ -1,7 +1,7 @@
 using BCKash.Application.Clients;
-using BCKash.Domain.Clients;
 using BCKash.Application.Loans;
 using BCKash.Application.Organization;
+using BCKash.Domain.Clients;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;

@@ -1,12 +1,12 @@
 using BCKash.Api.Contracts;
 using BCKash.Api.Infrastructure;
-using BCKash.Domain.Loans;
-using BCKash.Domain.Identity;
-using BCKash.Domain.Clients;
 using BCKash.Application.Clients;
-using BCKash.Application.Identity;
 using BCKash.Application.Groups;
+using BCKash.Application.Identity;
+using BCKash.Domain.Clients;
 using BCKash.Domain.Groups;
+using BCKash.Domain.Identity;
+using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

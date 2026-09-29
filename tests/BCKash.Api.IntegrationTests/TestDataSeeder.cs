@@ -119,7 +119,13 @@ public static class TestDataSeeder
         {
             db.ClientContacts.Add(new ClientContact
             {
-                ClientId = clientId, Kind = kind, FullName = name, Phone = "08031234567", Address = "12 Marina, Lagos", Relationship = "Friend", CreatedAt = DateTime.UtcNow,
+                ClientId = clientId,
+                Kind = kind,
+                FullName = name,
+                Phone = "08031234567",
+                Address = "12 Marina, Lagos",
+                Relationship = "Friend",
+                CreatedAt = DateTime.UtcNow,
             });
         }
 

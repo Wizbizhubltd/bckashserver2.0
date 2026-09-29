@@ -33,8 +33,13 @@ public class PendingActionsTests : IClassFixture<BCKashWebApplicationFactory>
             await db.SaveChangesAsync();
             var deletion = new DeletionRequest
             {
-                EntityType = DeletionRequest.ClientEntity, EntityId = risky.Id, EntityName = "Risky Client", OfficeId = office.Id,
-                Reason = "Duplicate", Status = DeletionRequestStatus.Pending, CreatedAt = DateTime.UtcNow,
+                EntityType = DeletionRequest.ClientEntity,
+                EntityId = risky.Id,
+                EntityName = "Risky Client",
+                OfficeId = office.Id,
+                Reason = "Duplicate",
+                Status = DeletionRequestStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
             };
             db.DeletionRequests.Add(deletion);
             await db.SaveChangesAsync();

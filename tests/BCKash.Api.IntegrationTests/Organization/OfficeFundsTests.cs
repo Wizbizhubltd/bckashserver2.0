@@ -216,8 +216,14 @@ public class OfficeFundsTests : IClassFixture<BCKashWebApplicationFactory>
         await db.SaveChangesAsync();
         var application = new LoanApplication
         {
-            ClientType = LoanClientType.Client, ClientId = client.Id, OfficeId = officeId, LoanProductId = product.Id,
-            Amount = amount, LoanTerm = 6, LoanTermType = FrequencyType.Months, Status = ApprovalStatus.Pending,
+            ClientType = LoanClientType.Client,
+            ClientId = client.Id,
+            OfficeId = officeId,
+            LoanProductId = product.Id,
+            Amount = amount,
+            LoanTerm = 6,
+            LoanTermType = FrequencyType.Months,
+            Status = ApprovalStatus.Pending,
         };
         db.LoanApplications.Add(application);
         await db.SaveChangesAsync();
