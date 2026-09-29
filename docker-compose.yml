@@ -3,6 +3,11 @@ services:
     # MariaDB, matching production (MariaDB 11.4).
     image: mariadb:11.4
     restart: unless-stopped
+    # InnoDB's in-memory cache. The 128M default is far smaller than the working set
+    # (loan_repayment_schedules alone is ~1.2GB with indexes), so dashboard/report queries hit
+    # disk on every row. 1G suits a 4GB host that also runs the API and Redis; raise it on a
+    # bigger box via DB_BUFFER_POOL_SIZE.
+    command: ["--innodb-buffer-pool-size=${DB_BUFFER_POOL_SIZE:-1G}"]
     environment:
       MARIADB_DATABASE: ${DB_NAME}
       MARIADB_USER: ${DB_USER}
