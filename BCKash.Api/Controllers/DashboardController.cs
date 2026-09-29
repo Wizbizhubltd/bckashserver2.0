@@ -1,8 +1,10 @@
 using BCKash.Api.Contracts;
+using BCKash.Application.Identity;
 using BCKash.Application.Loans;
 using BCKash.Domain.Clients;
 using BCKash.Domain.Identity;
 using BCKash.Domain.Loans;
+using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +12,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BCKash.Api.Controllers;
 
-/// <summary>Aggregate record counts for the control portal's dashboard — read-only, so any authenticated staff member can view it (no permission policy beyond being logged in).</summary>
+/// <summary>
+/// Aggregate record counts for the portals' dashboards — read-only, so any authenticated staff member
+/// can view it (no permission policy beyond being logged in). Figures cover only the caller's offices
+/// (see <see cref="IOfficeScope"/>): everything for a super admin, a director's zones, or one office.
+/// </summary>
 [ApiController]
 [Route("api/v1/dashboard")]
 [Authorize]
@@ -37,9 +43,11 @@ public class DashboardController : ControllerBase
 
     private readonly BCKashDbContext _db;
     private readonly IOverdueRulesProvider _overdueRules;
+    private readonly IOfficeScope _scope;
 
-    public DashboardController(BCKashDbContext db, IOverdueRulesProvider overdueRules)
+    public DashboardController(BCKashDbContext db, IOverdueRulesProvider overdueRules, IOfficeScope scope)
     {
+        _scope = scope;
         _db = db;
         _overdueRules = overdueRules;
     }
@@ -55,14 +63,15 @@ public class DashboardController : ControllerBase
         var rules = await _overdueRules.GetAsync(cancellationToken);
         var repaymentOverdueBefore = today.AddDays(-rules.RepaymentOverdueDays);
         var loanOverdueBefore = today.AddDays(-rules.LoanOverdueDays);
+        var data = new ScopedData(_db, await _scope.GetOfficeIdsAsync(cancellationToken));
 
-        var officesCount = await _db.Offices.CountAsync(cancellationToken);
-        var activeOfficesCount = await _db.Offices.CountAsync(o => o.Active, cancellationToken);
-        var staffCount = await _db.Users.CountAsync(cancellationToken);
-        var clientsCount = await _db.Clients.CountAsync(cancellationToken);
-        var activeClientsCount = await _db.Clients.CountAsync(c => c.Status == ClientStatus.Active, cancellationToken);
+        var officesCount = await data.Offices.CountAsync(cancellationToken);
+        var activeOfficesCount = await data.Offices.CountAsync(o => o.Active, cancellationToken);
+        var staffCount = await data.Users.CountAsync(cancellationToken);
+        var clientsCount = await data.Clients.CountAsync(cancellationToken);
+        var activeClientsCount = await data.Clients.CountAsync(c => c.Status == ClientStatus.Active, cancellationToken);
 
-        var outstandingLoansCount = await _db.Loans.CountAsync(l => l.Status == LoanStatus.Disbursed, cancellationToken);
+        var outstandingLoansCount = await data.Loans.CountAsync(l => l.Status == LoanStatus.Disbursed, cancellationToken);
 
         // Distinct loans carrying at least one installment, due within the last year, whose
         // principal isn't fully paid off. Bounded to a year (not all-time) and keyed off actual
@@ -72,7 +81,7 @@ public class DashboardController : ControllerBase
         // date bound this table (millions of rows on a real portfolio) makes an already
         // low-selectivity filter scan the entire history back to loans long since resolved.
         var lateLoanWindowStart = today.AddYears(-1);
-        var lateLoansCount = await _db.LoanRepaymentSchedules
+        var lateLoansCount = await data.LoanRepaymentSchedules
             .Where(s => s.DueDate < repaymentOverdueBefore && s.DueDate >= lateLoanWindowStart
                      && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)
                      && s.Loan!.Status == LoanStatus.Disbursed)
@@ -80,20 +89,20 @@ public class DashboardController : ControllerBase
             .Distinct()
             .CountAsync(cancellationToken);
 
-        var disbursementsThisMonth = _db.LoanTransactions
+        var disbursementsThisMonth = data.LoanTransactions
             .Where(t => t.TransactionType == LoanTransactionType.Disbursement && !t.Reversed && t.Date >= monthStart && t.Date <= today);
         var disbursementsThisMonthCount = await disbursementsThisMonth.CountAsync(cancellationToken);
         var disbursementsThisMonthAmount = await disbursementsThisMonth.SumAsync(t => t.Amount ?? 0, cancellationToken);
 
-        var repaymentsThisMonth = _db.LoanTransactions
+        var repaymentsThisMonth = data.LoanTransactions
             .Where(t => t.TransactionType == LoanTransactionType.Repayment && !t.Reversed && t.Date >= monthStart && t.Date <= today);
         var repaymentsThisMonthCount = await repaymentsThisMonth.CountAsync(cancellationToken);
         var repaymentsThisMonthAmount = await repaymentsThisMonth.SumAsync(t => t.Amount ?? 0, cancellationToken);
 
-        var loanPortfolio = await LoanPortfolioAsync(repaymentOverdueBefore, loanOverdueBefore, cancellationToken);
+        var loanPortfolio = await LoanPortfolioAsync(data, repaymentOverdueBefore, loanOverdueBefore, cancellationToken);
 
-        var pendingLoanApplicationsCount = await _db.LoanApplications.CountAsync(a => a.Status == ApprovalStatus.Pending, cancellationToken);
-        var pendingStaffOnboardingCount = await _db.Users.CountAsync(u => u.OnboardingStatus == UserOnboardingStatus.Pending, cancellationToken);
+        var pendingLoanApplicationsCount = await data.LoanApplications.CountAsync(a => a.Status == ApprovalStatus.Pending, cancellationToken);
+        var pendingStaffOnboardingCount = await data.Users.CountAsync(u => u.OnboardingStatus == UserOnboardingStatus.Pending, cancellationToken);
 
         return Ok(new DashboardSummaryResponse(
             officesCount,
@@ -119,9 +128,9 @@ public class DashboardController : ControllerBase
     /// that never recorded it. Approved uses the approved amount with the same fallback. Repaid is
     /// every non-reversed repayment transaction.
     /// </summary>
-    private async Task<LoanPortfolioSummary> LoanPortfolioAsync(DateOnly repaymentOverdueBefore, DateOnly loanOverdueBefore, CancellationToken cancellationToken)
+    private async Task<LoanPortfolioSummary> LoanPortfolioAsync(ScopedData data, DateOnly repaymentOverdueBefore, DateOnly loanOverdueBefore, CancellationToken cancellationToken)
     {
-        var loanGroups = await _db.Loans
+        var loanGroups = await data.Loans
             .GroupBy(l => new { l.Status, HasApproval = l.ApprovedDate != null })
             .Select(g => new
             {
@@ -133,7 +142,7 @@ public class DashboardController : ControllerBase
             })
             .ToListAsync(cancellationToken);
 
-        var applicationGroups = await _db.LoanApplications
+        var applicationGroups = await data.LoanApplications
             .Where(a => a.Status != ApprovalStatus.Approved)
             .GroupBy(a => a.Status)
             .Select(g => new { Status = g.Key, Count = g.Count(), Amount = g.Sum(a => a.Amount) })
@@ -145,7 +154,7 @@ public class DashboardController : ControllerBase
         var rejected = loanGroups.Where(g => RejectedStatuses.Contains(g.Status)).ToList();
         var pendingLoans = loanGroups.Where(g => !g.HasApproval && PendingApprovalStatuses.Contains(g.Status)).ToList();
 
-        var repayments = _db.LoanTransactions.Where(t => t.TransactionType == LoanTransactionType.Repayment && !t.Reversed);
+        var repayments = data.LoanTransactions.Where(t => t.TransactionType == LoanTransactionType.Repayment && !t.Reversed);
         var repaidCount = await repayments.CountAsync(cancellationToken);
         var repaidAmount = await repayments.SumAsync(t => t.Amount ?? 0, cancellationToken);
 
@@ -156,24 +165,24 @@ public class DashboardController : ControllerBase
         // late-loans note in Summary.
 
         // Late: a repayment date was missed, but the loan hasn't reached its final repayment date yet.
-        var lateLoans = _db.Loans
+        var lateLoans = data.Loans
             .Where(l => l.Status == LoanStatus.Disbursed
                      && (l.ExpectedMaturityDate ?? l.LoanRepaymentSchedules.Max(s => s.DueDate)) >= loanOverdueBefore
                      && l.LoanRepaymentSchedules.Any(s => s.DueDate < repaymentOverdueBefore && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)))
             .Select(l => l.Id);
         var lateCount = await lateLoans.CountAsync(cancellationToken);
-        var lateAmount = await _db.LoanRepaymentSchedules
+        var lateAmount = await data.LoanRepaymentSchedules
             .Where(s => lateLoans.Contains(s.LoanId!.Value) && s.DueDate < repaymentOverdueBefore && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0))
             .SumAsync(s => (s.Principal ?? 0) - (s.PrincipalPaid ?? 0) + (s.Interest ?? 0) - (s.InterestPaid ?? 0), cancellationToken);
 
         // Defaulted: past the final repayment date with principal still unpaid.
-        var defaultedLoans = _db.Loans
+        var defaultedLoans = data.Loans
             .Where(l => l.Status == LoanStatus.Disbursed
                      && (l.ExpectedMaturityDate ?? l.LoanRepaymentSchedules.Max(s => s.DueDate)) < loanOverdueBefore
                      && l.LoanRepaymentSchedules.Any(s => (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)))
             .Select(l => l.Id);
         var defaultedCount = await defaultedLoans.CountAsync(cancellationToken);
-        var defaultedAmount = await _db.LoanRepaymentSchedules
+        var defaultedAmount = await data.LoanRepaymentSchedules
             .Where(s => defaultedLoans.Contains(s.LoanId!.Value))
             .SumAsync(s => (s.Principal ?? 0) - (s.PrincipalPaid ?? 0) + (s.Interest ?? 0) - (s.InterestPaid ?? 0), cancellationToken);
 
@@ -188,5 +197,29 @@ public class DashboardController : ControllerBase
             repaidAmount, repaidCount,
             lateAmount, lateCount,
             defaultedAmount, defaultedCount);
+    }
+
+    /// <summary>The dashboard's source tables narrowed to the caller's offices; unfiltered when <c>officeIds</c> is null (super admin).</summary>
+    private sealed class ScopedData(BCKashDbContext db, IReadOnlyCollection<int>? officeIds)
+    {
+        public IQueryable<Office> Offices => officeIds is null ? db.Offices : db.Offices.Where(o => officeIds.Contains(o.Id));
+
+        public IQueryable<User> Users => officeIds is null ? db.Users : db.Users.Where(u => u.OfficeId.HasValue && officeIds.Contains(u.OfficeId.Value));
+
+        public IQueryable<Client> Clients =>
+            officeIds is null
+                ? db.Clients.Where(c => c.DeletedAt == null)
+                : db.Clients.Where(c => c.DeletedAt == null && c.OfficeId.HasValue && officeIds.Contains(c.OfficeId.Value));
+
+        public IQueryable<Loan> Loans => officeIds is null ? db.Loans : db.Loans.Where(l => l.OfficeId.HasValue && officeIds.Contains(l.OfficeId.Value));
+
+        public IQueryable<LoanApplication> LoanApplications =>
+            officeIds is null ? db.LoanApplications : db.LoanApplications.Where(a => a.OfficeId.HasValue && officeIds.Contains(a.OfficeId.Value));
+
+        public IQueryable<LoanTransaction> LoanTransactions =>
+            officeIds is null ? db.LoanTransactions : db.LoanTransactions.Where(t => t.Loan!.OfficeId.HasValue && officeIds.Contains(t.Loan.OfficeId.Value));
+
+        public IQueryable<LoanRepaymentSchedule> LoanRepaymentSchedules =>
+            officeIds is null ? db.LoanRepaymentSchedules : db.LoanRepaymentSchedules.Where(s => s.Loan!.OfficeId.HasValue && officeIds.Contains(s.Loan.OfficeId.Value));
     }
 }

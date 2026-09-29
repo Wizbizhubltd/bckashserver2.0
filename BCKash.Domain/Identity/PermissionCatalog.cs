@@ -29,6 +29,7 @@ public static class PermissionCatalog
         new("loan-applications.manage", "Loans", "Raise loan applications", "Create and edit loan applications with their guarantors and collateral, and resubmit loans sent back for changes."),
         new("loan-applications.approve", "Loans", "Approve loans", "Approve or decline loan applications, and send loans back for changes."),
         new("loan-servicing.manage", "Loans", "Service loans", "Disburse loans, record repayments, reschedule, waive, write off and recover, attach loan charges and run due penalties."),
+        new("loan-repayments.record", "Loans", "Record repayments", "Record a customer's loan repayment — nothing else about servicing the loan. Reversing a repayment needs Service loans."),
 
         // Savings
         new("savings-products.manage", "Savings", "Savings products", "Create and edit savings products."),

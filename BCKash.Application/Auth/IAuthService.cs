@@ -14,6 +14,9 @@ public enum LoginOutcomeType
 
     /// <summary>New in the staff-onboarding pass — a Pending (not-yet-authorized) staff record can't log in until an Authorizer of the same user_type approves it.</summary>
     PendingOnboarding,
+
+    /// <summary>Correct password, but the user's user_type isn't allowed on the portal they're signing in to.</summary>
+    WrongPortal,
 }
 
 public record LoginResult(
@@ -119,7 +122,8 @@ public record RefreshResult(RefreshOutcomeType Outcome, AccessToken? AccessToken
 /// </summary>
 public interface IAuthService
 {
-    Task<LoginResult> LoginAsync(string email, string password, string? ip, CancellationToken cancellationToken = default);
+    /// <param name="portal">"office" or "control" (see <see cref="Domain.Identity.PortalAccessRules"/>); null skips the portal check.</param>
+    Task<LoginResult> LoginAsync(string email, string password, string? ip, string? portal = null, CancellationToken cancellationToken = default);
 
     /// <param name="deviceId">Client-generated id of the signing-in device. Completing a sign-in signs the user out on every other device.</param>
     Task<TwoFactorResult> VerifyTwoFactorAsync(string challengeToken, string totpCode, string? deviceId, CancellationToken cancellationToken = default);

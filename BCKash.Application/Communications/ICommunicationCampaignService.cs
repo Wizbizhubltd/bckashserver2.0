@@ -8,6 +8,9 @@ public enum CampaignWriteOutcome
     NotFound,
     GatewayNotFound,
 
+    /// <summary>An SMS campaign while SMS sending is switched off (see <see cref="ISmsSwitch"/>) — nothing is sent or marked as run.</summary>
+    SmsSwitchedOff,
+
     /// <summary>An SMS campaign has no configured gateway, or an email campaign has no recipients/subject.</summary>
     NotSendable,
 }

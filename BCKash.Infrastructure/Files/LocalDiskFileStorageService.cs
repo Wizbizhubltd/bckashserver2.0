@@ -11,30 +11,6 @@ namespace BCKash.Infrastructure.Files;
 /// </summary>
 public class LocalDiskFileStorageService : IFileStorageService
 {
-    // Content type is never stored (neither Document nor the legacy schema has a
-    // content-type column) — it's re-derived from the filename extension at download time.
-    // Small, fixed map rather than Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider,
-    // which lives in the ASP.NET Core shared framework and isn't available to this plain
-    // class-library project; this is sufficient for the document types Phase 2 needs to round-trip.
-    private static readonly Dictionary<string, string> ContentTypesByExtension = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".pdf"] = "application/pdf",
-        [".png"] = "image/png",
-        [".jpg"] = "image/jpeg",
-        [".jpeg"] = "image/jpeg",
-        [".gif"] = "image/gif",
-        [".bmp"] = "image/bmp",
-        [".webp"] = "image/webp",
-        [".doc"] = "application/msword",
-        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        [".xls"] = "application/vnd.ms-excel",
-        [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        [".csv"] = "text/csv",
-        [".txt"] = "text/plain",
-    };
-
-    private const string DefaultContentType = "application/octet-stream";
-
     private readonly string _rootPath;
 
     public LocalDiskFileStorageService(IOptions<FileStorageSettings> settings)
@@ -73,10 +49,8 @@ public class LocalDiskFileStorageService : IFileStorageService
             return Task.FromResult<StoredFileContent?>(null);
         }
 
-        var extension = Path.GetExtension(originalFileName);
-        var contentType = extension is not null && ContentTypesByExtension.TryGetValue(extension, out var mapped)
-            ? mapped
-            : DefaultContentType;
+        // Content type is never stored — it's re-derived from the file name (see FileContentTypes).
+        var contentType = FileContentTypes.For(originalFileName);
 
         Stream stream = new FileStream(absolutePath, FileMode.Open, FileAccess.Read);
         return Task.FromResult<StoredFileContent?>(new StoredFileContent(stream, contentType));

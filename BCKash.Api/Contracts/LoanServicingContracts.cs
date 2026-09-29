@@ -9,7 +9,9 @@ public record ScheduleInstallmentResponse(
     decimal? Principal, decimal? PrincipalPaid, decimal? PrincipalWaived, decimal? PrincipalWrittenOff,
     decimal? Interest, decimal? InterestPaid, decimal? InterestWaived, decimal? InterestWrittenOff,
     decimal? Fees, decimal? FeesPaid, decimal? Penalty, decimal? PenaltyPaid,
-    decimal? TotalDue, bool Paid);
+    decimal? TotalDue, bool Paid,
+    // What the client pays for this instalment: TotalDue, grossed up on a savings loan (see ClientSavingsRules).
+    decimal? CustomerPays = null);
 
 // ---- Repayments (FR-LN-16 to FR-LN-19) ----
 
@@ -42,3 +44,40 @@ public record RecordRecoveryRequest(decimal Amount, DateOnly? Date, string? Note
 // ---- NPA (FR-LN-25) ----
 
 public record NpaStatusResponse(bool IsNpa, bool IncomeSuspended, int DaysInArrears);
+
+/// <summary>A repayment waiting for (or past) the office manager's confirmation. <c>CanReview</c>: whether the viewer may approve or dispute it.</summary>
+public record RepaymentSubmissionResponse(
+    int Id, int LoanId, decimal Amount, DateOnly? PaymentDate, string? Notes, RepaymentSubmissionStatus Status,
+    string? SubmittedByName, DateTime? SubmittedAt, string? ReviewedByName, DateTime? ReviewedAt, string? DisputeReason,
+    int? LoanTransactionId, bool CanReview);
+
+/// <summary>
+/// A loan at a glance. <c>ExpectedTotal</c> is principal plus interest (fees and penalties are shown
+/// separately); <c>TotalRemaining</c> is what's still owed to the loan. On a savings loan the client pays a
+/// little more — <c>CustomerTotal</c>/<c>CustomerRemaining</c> — because a share of each payment goes into
+/// their savings. Amounts are null before the loan is disbursed and has a schedule.
+/// </summary>
+public record LoanSummaryResponse(
+    decimal? Principal,
+    decimal? Interest,
+    decimal? ExpectedTotal,
+    decimal? Fees,
+    DateOnly? ExpectedCompletionDate,
+    decimal TotalRepaid,
+    decimal SavedFromRepayments,
+    decimal? TotalRemaining,
+    decimal? SavingsRate,
+    decimal? CustomerTotal,
+    decimal? CustomerRemaining,
+    LoanPenaltySummaryResponse Penalty,
+    LoanCompletionResponse? Completion = null);
+
+/// <summary>
+/// Whether the loan is completed — fully repaid and closed out — and if it isn't, what's still owed that keeps it
+/// open, split by kind. <c>Completed</c> is false with nothing owed only before disbursement.
+/// </summary>
+public record LoanCompletionResponse(
+    bool Completed, DateOnly? CompletedOn, decimal PrincipalOwed, decimal InterestOwed, decimal FeesOwed, decimal PenaltyOwed);
+
+/// <summary>Penalties on the loan. <c>Status</c>: None, Unpaid, PartPaid, Paid or Waived.</summary>
+public record LoanPenaltySummaryResponse(decimal Charged, decimal Paid, decimal Waived, decimal Outstanding, DateOnly? StartedOn, string Status);

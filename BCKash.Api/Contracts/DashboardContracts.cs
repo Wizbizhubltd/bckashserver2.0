@@ -34,3 +34,16 @@ public record LoanPortfolioSummary(
     /// <summary>Outstanding principal and interest on the defaulted loans.</summary>
     decimal DefaultedAmount,
     int DefaultedCount);
+
+// ---- Super admin pending actions ----
+
+/// <summary>Everything waiting on a super admin, grouped by kind; <c>Total</c> is what the control portal's bell shows.</summary>
+public record PendingActionsResponse(int Total, IReadOnlyList<PendingActionGroupResponse> Groups);
+
+/// <summary>One kind of pending item. <c>Items</c> are the newest <c>Count</c>-capped few; <c>Link</c> opens the full list in the control portal.</summary>
+public record PendingActionGroupResponse(string Key, string Title, string Link, int Count, IReadOnlyList<PendingActionItemResponse> Items);
+
+/// <summary>One pending item and where it opens in the control portal.</summary>
+public record PendingActionItemResponse(int Id, string Title, string? Detail, string Link, DateTime? CreatedAt);
+
+public record PendingActionsSummaryResponse(int Total);

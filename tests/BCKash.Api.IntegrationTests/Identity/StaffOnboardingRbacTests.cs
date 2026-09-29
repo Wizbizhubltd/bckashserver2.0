@@ -44,23 +44,50 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
         Assert.Equal(UserTypeSlugs.SuperAdmin, me!.UserType);
         Assert.Equal(UserOnboardingStatus.Approved, me.OnboardingStatus);
 
+        // --- Super admin sets up an office in a zone, to onboard staff into. ---
+        OfficeLocation location;
+        using (var scope = factory.Services.CreateScope())
+        {
+            location = await TestDataSeeder.SeedOfficeLocationAsync(scope.ServiceProvider.GetRequiredService<BCKashDbContext>());
+        }
+
+        var officeRequest = new { Name = "HQ", location.StateId, location.LgaId, location.CityId, location.ZoneId };
+        var office = await (await superAdminClient.PostAsJsonAsync("/api/v1/offices", officeRequest)).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
+
         // --- Super admin onboards a director-Initiator, a director-Authorizer, and a
         //     controller-Authorizer (to prove cross-user_type rejection) — all auto-approved
-        //     since the creator is a super admin. ---
+        //     since the creator is a super admin. Directors oversee zones, which only a super admin assigns. ---
         var directorInitiator = await CreateUserAsync(superAdminClient, "director-initiator@bckash.test", UserTypeSlugs.Director, UserClass.Initiator);
         Assert.Equal(UserOnboardingStatus.Approved, directorInitiator.OnboardingStatus);
 
         var directorAuthorizer = await CreateUserAsync(superAdminClient, "director-authorizer@bckash.test", UserTypeSlugs.Director, UserClass.Authorizer);
-        var controllerAuthorizer = await CreateUserAsync(superAdminClient, "controller-authorizer@bckash.test", UserTypeSlugs.Controller, UserClass.Authorizer);
+        var controllerAuthorizer = await CreateUserAsync(superAdminClient, "controller-authorizer@bckash.test", UserTypeSlugs.Controller, UserClass.Authorizer, office!.Id);
+
+        foreach (var director in new[] { directorInitiator, directorAuthorizer })
+        {
+            var zonesResponse = await superAdminClient.PutAsJsonAsync($"/api/v1/users/{director.Id}/zones", new AssignZonesRequest([location.ZoneId]));
+            Assert.True(zonesResponse.IsSuccessStatusCode, await zonesResponse.Content.ReadAsStringAsync());
+            var withZones = await zonesResponse.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
+            Assert.Equal([location.ZoneId], withZones!.Zones.Select(z => z.Id));
+        }
+
+        // Zones are for directors only.
+        var controllerZones = await superAdminClient.PutAsJsonAsync($"/api/v1/users/{controllerAuthorizer.Id}/zones", new AssignZonesRequest([location.ZoneId]));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, controllerZones.StatusCode);
 
         // --- The director-Initiator logs in and initiates a new hire — NOT auto-approved,
         //     since the creator this time is an ordinary Initiator, not a super admin. ---
         var directorInitiatorPassword = ExtractPassword(recordingSender, "director-initiator@bckash.test");
         var directorInitiatorClient = await LoginAsync(factory, "director-initiator@bckash.test", directorInitiatorPassword);
 
+        // A director can't onboard a fellow director — only staff ranked below them.
+        var peerResponse = await directorInitiatorClient.PostAsJsonAsync("/api/v1/users", new CreateUserRequest(
+            "peer-director@bckash.test", "Peer", "Director", null, office.Id, UserTypeSlugs.Director, UserClass.Initiator, null, null, null));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, peerResponse.StatusCode);
+
         var newHireResponse = await directorInitiatorClient.PostAsJsonAsync("/api/v1/users", new CreateUserRequest(
-            "new-hire@bckash.test", "New", "Hire", null, null, UserTypeSlugs.Director, UserClass.Initiator, null, null, null));
-        Assert.True(newHireResponse.IsSuccessStatusCode);
+            "new-hire@bckash.test", "New", "Hire", null, office.Id, UserTypeSlugs.Manager, UserClass.Initiator, null, null, null));
+        Assert.True(newHireResponse.IsSuccessStatusCode, await newHireResponse.Content.ReadAsStringAsync());
         var newHire = await newHireResponse.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
         Assert.Equal(UserOnboardingStatus.Pending, newHire!.OnboardingStatus);
 
@@ -85,26 +112,20 @@ public class StaffOnboardingRbacTests : IClassFixture<BCKashWebApplicationFactor
         var newHireClient = await LoginAsync(factory, "new-hire@bckash.test", ExtractPassword(recordingSender, "new-hire@bckash.test"));
         var newHireMe = await newHireClient.GetFromJsonAsync<UserResponse>("/api/v1/users/me", TestJson.Options);
         Assert.Equal("new-hire@bckash.test", newHireMe!.Email);
+        Assert.Equal(office.Id, newHireMe.OfficeId);
 
-        // --- Super admin can assign staff to an office (existing office CRUD + new assign-office action). ---
-        OfficeLocation location;
-        using (var scope = factory.Services.CreateScope())
-        {
-            location = await TestDataSeeder.SeedOfficeLocationAsync(scope.ServiceProvider.GetRequiredService<BCKashDbContext>());
-        }
-
-        var officeRequest = new { Name = "HQ", location.StateId, location.LgaId, location.CityId, location.ZoneId };
-        var office = await (await superAdminClient.PostAsJsonAsync("/api/v1/offices", officeRequest)).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
-        var assignResponse = await superAdminClient.PostAsJsonAsync($"/api/v1/users/{newHire.Id}/assign-office", new AssignOfficeRequest(office!.Id));
+        // --- Super admin can move staff to another office (assign-office action). ---
+        var secondOffice = await (await superAdminClient.PostAsJsonAsync("/api/v1/offices", officeRequest with { Name = "Branch" })).Content.ReadFromJsonAsync<OfficeResponse>(TestJson.Options);
+        var assignResponse = await superAdminClient.PostAsJsonAsync($"/api/v1/users/{newHire.Id}/assign-office", new AssignOfficeRequest(secondOffice!.Id));
         Assert.True(assignResponse.IsSuccessStatusCode);
         var assigned = await assignResponse.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options);
-        Assert.Equal(office.Id, assigned!.OfficeId);
+        Assert.Equal(secondOffice.Id, assigned!.OfficeId);
     }
 
-    private static async Task<UserResponse> CreateUserAsync(HttpClient actingClient, string email, string userTypeSlug, UserClass userClass)
+    private static async Task<UserResponse> CreateUserAsync(HttpClient actingClient, string email, string userTypeSlug, UserClass userClass, int? officeId = null)
     {
         var response = await actingClient.PostAsJsonAsync("/api/v1/users", new CreateUserRequest(
-            email, "Test", "User", null, null, userTypeSlug, userClass, null, null, null));
+            email, "Test", "User", null, officeId, userTypeSlug, userClass, null, null, null));
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<UserResponse>(TestJson.Options))!;
     }

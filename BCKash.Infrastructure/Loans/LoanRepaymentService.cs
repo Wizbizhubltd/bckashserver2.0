@@ -1,3 +1,4 @@
+using BCKash.Domain.Clients;
 using BCKash.Application.GeneralLedger;
 using BCKash.Application.Loans;
 using BCKash.Domain.Loans;
@@ -23,14 +24,17 @@ public class LoanRepaymentService : ILoanRepaymentService
     private readonly ILoanNpaService _npaService;
     private readonly ILoanGlPostingService _glPostingService;
     private readonly IGlJournalEntryService _glJournalEntryService;
+    private readonly ILoanCompletionService _completion;
 
     public LoanRepaymentService(
         BCKashDbContext db,
         ICurrentUserContext currentUser,
         ILoanNpaService npaService,
         ILoanGlPostingService glPostingService,
-        IGlJournalEntryService glJournalEntryService)
+        IGlJournalEntryService glJournalEntryService,
+        ILoanCompletionService completion)
     {
+        _completion = completion;
         _db = db;
         _currentUser = currentUser;
         _npaService = npaService;
@@ -51,9 +55,21 @@ public class LoanRepaymentService : ILoanRepaymentService
             return new LoanRepaymentWriteResult(LoanRepaymentWriteOutcome.NotFound);
         }
 
+        // A completed loan is fully repaid: nothing more is owed on it.
+        if (loan.Status is LoanStatus.Closed or LoanStatus.Paid)
+        {
+            return new LoanRepaymentWriteResult(LoanRepaymentWriteOutcome.ExceedsBalance);
+        }
+
         if (!LoanTransitionRules.HasActiveSchedule(loan.Status))
         {
             return new LoanRepaymentWriteResult(LoanRepaymentWriteOutcome.InvalidLoanStatus);
+        }
+
+        // Nothing beyond what's still owed — a fully repaid loan takes no more.
+        if (amount > await RemainingAsync(loan, cancellationToken))
+        {
+            return new LoanRepaymentWriteResult(LoanRepaymentWriteOutcome.ExceedsBalance);
         }
 
         var product = await _db.LoanProducts.FirstOrDefaultAsync(p => p.Id == loan.LoanProductId, cancellationToken);
@@ -73,7 +89,9 @@ public class LoanRepaymentService : ILoanRepaymentService
             Outstanding(s.Penalty, s.PenaltyWaived, s.PenaltyWrittenOff, s.PenaltyPaid)))
             .ToList();
 
-        var allocationResult = LoanRepaymentAllocationEngine.Allocate(outstandings, amount, strategy);
+        // On a savings loan, a share of what the client pays goes into their savings; the rest pays the loan.
+        var savings = loan.SavingsRate is > 0 && loan.ClientId.HasValue ? ClientSavingsRules.SavingsShare(amount, loan.SavingsRate.Value) : 0m;
+        var allocationResult = LoanRepaymentAllocationEngine.Allocate(outstandings, amount - savings, strategy);
 
         var effectiveDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var transaction = new LoanTransaction
@@ -98,6 +116,22 @@ public class LoanRepaymentService : ILoanRepaymentService
             Notes = notes,
         };
         _db.LoanTransactions.Add(transaction);
+
+        if (savings > 0)
+        {
+            _db.ClientSavingsEntries.Add(new ClientSavingsEntry
+            {
+                ClientId = loan.ClientId!.Value,
+                LoanId = loan.Id,
+                LoanTransaction = transaction,
+                Type = ClientSavingsEntryType.Contribution,
+                Amount = savings,
+                Notes = $"{loan.SavingsRate!.Value * 100:0.##}% of a {amount:0.##} repayment",
+                CreatedById = _currentUser.UserId,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
 
         var schedulesById = unpaidSchedules.ToDictionary(s => s.Id);
         foreach (var allocation in allocationResult.Allocations)
@@ -145,6 +179,9 @@ public class LoanRepaymentService : ILoanRepaymentService
         await _npaService.RecomputeAsync(loanId, cancellationToken);
         await _glPostingService.PostRepaymentAsync(loan, transaction, cancellationToken);
 
+        // Nothing left owed — principal, interest, fees and penalties — closes the loan out.
+        await _completion.CompleteIfSettledAsync(loanId, cancellationToken);
+
         return new LoanRepaymentWriteResult(LoanRepaymentWriteOutcome.Success, transaction, allocationResult.Overpayment);
     }
 
@@ -190,15 +227,54 @@ public class LoanRepaymentService : ILoanRepaymentService
         transaction.ReversalType = LoanTransactionReversalType.User;
         transaction.ModifiedById = _currentUser.UserId;
 
+        // The repayment's savings share goes back out too.
+        var contribution = await _db.ClientSavingsEntries
+            .Where(e => e.LoanTransactionId == transactionId && e.Type == ClientSavingsEntryType.Contribution)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (contribution is not null)
+        {
+            _db.ClientSavingsEntries.Add(new ClientSavingsEntry
+            {
+                ClientId = contribution.ClientId,
+                LoanId = contribution.LoanId,
+                LoanTransactionId = transactionId,
+                Type = ClientSavingsEntryType.ContributionReversal,
+                Amount = -contribution.Amount,
+                Notes = "Repayment reversed",
+                CreatedById = _currentUser.UserId,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         await _glJournalEntryService.ReverseByReferenceAsync($"LOAN-{transaction.TransactionType}-{transaction.Id}", cancellationToken);
 
         if (transaction.LoanId.HasValue)
         {
+            // A loan closed by the repayment being reversed is owed again, so it reopens.
+            await _completion.ReopenIfOwingAsync(transaction.LoanId.Value, cancellationToken);
             await _npaService.RecomputeAsync(transaction.LoanId.Value, cancellationToken);
         }
 
         return new LoanRepaymentWriteResult(LoanRepaymentWriteOutcome.Success, transaction);
+    }
+
+    public async Task<decimal?> RemainingAsync(int loanId, CancellationToken cancellationToken = default)
+    {
+        var loan = await _db.Loans.FirstOrDefaultAsync(l => l.Id == loanId, cancellationToken);
+        return loan is null ? null : await RemainingAsync(loan, cancellationToken);
+    }
+
+    private async Task<decimal> RemainingAsync(Loan loan, CancellationToken cancellationToken)
+    {
+        var schedule = await _db.LoanRepaymentSchedules.Where(s => s.LoanId == loan.Id).ToListAsync(cancellationToken);
+        var owed = schedule.Sum(s =>
+            Outstanding(s.Principal, s.PrincipalWaived, s.PrincipalWrittenOff, s.PrincipalPaid)
+            + Outstanding(s.Interest, s.InterestWaived, s.InterestWrittenOff, s.InterestPaid)
+            + Outstanding(s.Fees, s.FeesWaived, s.FeesWrittenOff, s.FeesPaid)
+            + Outstanding(s.Penalty, s.PenaltyWaived, s.PenaltyWrittenOff, s.PenaltyPaid));
+        return ClientSavingsRules.GrossUp(owed, loan.ClientId.HasValue ? loan.SavingsRate : null);
     }
 
     private static decimal Outstanding(decimal? due, decimal? waived, decimal? writtenOff, decimal? paid) =>

@@ -2,7 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using BCKash.Api.Contracts;
 using BCKash.Domain.Clients;
+using BCKash.Domain.Identity;
 using BCKash.Domain.Loans;
+using BCKash.Domain.Organization;
+using BCKash.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace BCKash.Api.IntegrationTests.Loans;
@@ -47,17 +52,18 @@ public class LoanRepaymentsControllerTests : IClassFixture<BCKashWebApplicationF
     }
 
     /// <summary>Produces a Disbursed loan with the clean 12×(1000 principal, 120 interest) schedule described above.</summary>
-    private static async Task<int> CreateDisbursedLoanAsync(HttpClient client, string label)
+    private async Task<int> CreateDisbursedLoanAsync(HttpClient client, string label, int? officeId = null)
     {
         var productId = (await (await client.PostAsJsonAsync("/api/v1/loan-products", CleanMonthlyProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
         var clientId = await CreateClientAsync(client, label);
-        var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, null, clientId, null, productId, 12000, 12, FrequencyType.Months, null);
+        var applicationRequest = new CreateLoanApplicationRequest(LoanClientType.Client, null, null, officeId, clientId, null, productId, 12000, 12, FrequencyType.Months, null);
         var application = await (await client.PostAsJsonAsync("/api/v1/loan-applications", applicationRequest)).Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         var approveResponse = await client.PostAsJsonAsync($"/api/v1/loan-applications/{application!.Id}/approve", new ApproveLoanApplicationRequest(12000, null));
         var approved = await approveResponse.Content.ReadFromJsonAsync<LoanApplicationResponse>(TestJson.Options);
         var loanId = approved!.LoanId!.Value;
 
         await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000, null));
+        await TestDataSeeder.WithoutSavingsAsync(_factory, loanId);
         return loanId;
     }
 
@@ -127,20 +133,37 @@ public class LoanRepaymentsControllerTests : IClassFixture<BCKashWebApplicationF
     }
 
     [Fact]
-    public async Task Overpayment_beyond_the_entire_schedules_outstanding_is_reported_on_the_transaction()
+    public async Task A_repayment_can_never_exceed_what_is_still_owed()
     {
         var client = await AuthenticatedClientFactory.CreateAsync(_factory, "repayment-overpay@bckash.test", AllPermissions);
         var loanId = await CreateDisbursedLoanAsync(client, "Overpay");
 
-        // Total outstanding across all 12 installments is 12 x 1120 = 13440; pay 500 more than that.
-        var response = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(13940m, null, new DateOnly(2026, 1, 15), null));
+        // Total outstanding across all 12 installments is 12 x 1120 = 13440; a cent more is refused.
+        var tooMuch = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(13440.01m, null, new DateOnly(2026, 1, 15), null));
+        Assert.Equal(HttpStatusCode.BadRequest, tooMuch.StatusCode);
+        Assert.Contains("At most ₦13,440 can be paid", await tooMuch.Content.ReadAsStringAsync());
+        Assert.Equal(13440m, (await client.GetFromJsonAsync<RepaymentAccountResponse>($"/api/v1/loans/{loanId}/repayments/pay-into", TestJson.Options))!.MaxRepayment);
+
+        // Exactly what's owed clears the loan…
+        var response = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(13440m, null, new DateOnly(2026, 1, 15), null));
         var transaction = await response.Content.ReadFromJsonAsync<LoanTransactionResponse>(TestJson.Options);
-
         Assert.Equal(13440m, transaction!.Principal + transaction.Interest);
-        Assert.Equal(500m, transaction.Overpayment);
-
+        Assert.Null(transaction.Overpayment);
         var schedule = await client.GetFromJsonAsync<List<ScheduleInstallmentResponse>>($"/api/v1/loans/{loanId}/schedule", TestJson.Options);
         Assert.All(schedule!, s => Assert.True(s.Paid));
+
+        // …and closes it out as completed, after which nothing more is taken.
+        var summary = await client.GetFromJsonAsync<LoanSummaryResponse>($"/api/v1/loans/{loanId}/summary", TestJson.Options);
+        Assert.True(summary!.Completion!.Completed);
+        Assert.Equal(LoanStatus.Closed, (await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options))!.Status);
+        var afterPaidOff = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(1m, null, null, null));
+        Assert.Equal(HttpStatusCode.BadRequest, afterPaidOff.StatusCode);
+        Assert.Contains("fully repaid", await afterPaidOff.Content.ReadAsStringAsync());
+
+        Assert.Equal(0m, (await client.GetFromJsonAsync<RepaymentAccountResponse>($"/api/v1/loans/{loanId}/repayments/pay-into", TestJson.Options))!.MaxRepayment);
+        // Reversing the repayment leaves money owed again, so the loan reopens.
+        Assert.True((await client.PostAsync($"/api/v1/loans/{loanId}/repayments/{transaction.Id}/reverse", null)).IsSuccessStatusCode);
+        Assert.Equal(LoanStatus.Disbursed, (await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options))!.Status);
     }
 
     [Fact]
@@ -191,5 +214,95 @@ public class LoanRepaymentsControllerTests : IClassFixture<BCKashWebApplicationF
         var response = await client.PostAsJsonAsync($"/api/v1/loans/{approved!.LoanId}/repayments", new RecordRepaymentRequest(1120m, null, null, null));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_loan_with_a_penalty_still_owed_stays_open_and_says_why()
+    {
+        var client = await AuthenticatedClientFactory.CreateAsync(_factory, "repayment-penalty-open@bckash.test", AllPermissions);
+        var loanId = await CreateDisbursedLoanAsync(client, "PenaltyOpen");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var first = await db.LoanRepaymentSchedules.Where(s => s.LoanId == loanId).OrderBy(s => s.DueDate).FirstAsync();
+            first.Penalty = 50m;
+            await db.SaveChangesAsync();
+        }
+
+        // Principal and interest (13,440) are paid; the 50 penalty isn't.
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(13440m, null, new DateOnly(2026, 1, 15), null));
+
+        var summary = await client.GetFromJsonAsync<LoanSummaryResponse>($"/api/v1/loans/{loanId}/summary", TestJson.Options);
+        Assert.False(summary!.Completion!.Completed);
+        Assert.Equal(50m, summary.Completion.PrincipalOwed + summary.Completion.InterestOwed + summary.Completion.FeesOwed + summary.Completion.PenaltyOwed);
+        Assert.Equal(LoanStatus.Disbursed, (await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options))!.Status);
+
+        // Paying it completes the loan.
+        await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/repayments", new RecordRepaymentRequest(50m, null, new DateOnly(2026, 1, 20), null));
+        Assert.Equal(LoanStatus.Closed, (await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options))!.Status);
+    }
+
+    [Fact]
+    public async Task Loans_already_fully_repaid_are_closed_out_by_the_sweep()
+    {
+        var client = await AuthenticatedClientFactory.CreateAsync(_factory, "repayment-sweep@bckash.test", AllPermissions);
+        var loanId = await CreateDisbursedLoanAsync(client, "Sweep");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            // Repaid before loans closed themselves: every instalment paid, the loan still marked Disbursed.
+            foreach (var s in await db.LoanRepaymentSchedules.Where(s => s.LoanId == loanId).ToListAsync())
+            {
+                (s.PrincipalPaid, s.InterestPaid, s.Paid) = (s.Principal, s.Interest, true);
+            }
+
+            await db.SaveChangesAsync();
+            Assert.True(await scope.ServiceProvider.GetRequiredService<BCKash.Application.Loans.ILoanCompletionService>().SweepAsync() >= 1);
+        }
+
+        Assert.Equal(LoanStatus.Closed, (await client.GetFromJsonAsync<LoanResponse>($"/api/v1/loans/{loanId}", TestJson.Options))!.Status);
+    }
+
+    [Fact]
+    public async Task A_marketer_records_repayments_in_their_own_office_and_sees_where_to_pay()
+    {
+        var admin = await AuthenticatedClientFactory.CreateAsync(_factory, "repayment-marketer-admin@bckash.test", AllPermissions);
+        int officeId, otherOfficeId;
+        const string marketerEmail = "repayment-marketer@bckash.test";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            officeId = (await TestDataSeeder.SeedOfficeAsync(db)).Id;
+            otherOfficeId = (await TestDataSeeder.SeedOfficeAsync(db)).Id;
+            await TestDataSeeder.SeedTypedUserAsync(db, marketerEmail, "Correct-Password1!", UserTypeSlugs.Marketer, officeId);
+            db.OfficeBankAccounts.AddRange(
+                new OfficeBankAccount { OfficeId = officeId, BankName = "Old Bank", AccountName = "BCKash Old", AccountNumber = "1111111111", IsDefault = false, Active = true },
+                new OfficeBankAccount { OfficeId = officeId, BankName = "Access Bank", AccountName = "BCKash Ikeja", AccountNumber = "0123456789", IsDefault = true, Active = true });
+            await db.SaveChangesAsync();
+        }
+
+        var ownLoanId = await CreateDisbursedLoanAsync(admin, "MarketerOwn", officeId);
+        var otherLoanId = await CreateDisbursedLoanAsync(admin, "MarketerOther", otherOfficeId);
+
+        var marketer = _factory.CreateClient();
+        var tokens = await LoginTestHelper.LoginAndVerifyOtpAsync(_factory, marketer, marketerEmail, "Correct-Password1!");
+        marketer.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+
+        var payInto = await marketer.GetFromJsonAsync<RepaymentAccountResponse>($"/api/v1/loans/{ownLoanId}/repayments/pay-into", TestJson.Options);
+        Assert.Equal(new RepaymentAccountResponse(payInto!.OfficeName, "Access Bank", "BCKash Ikeja", "0123456789", MaxRepayment: 13440m), payInto);
+
+        // A marketer's repayment waits for the office manager's confirmation.
+        var recorded = await marketer.PostAsJsonAsync($"/api/v1/loans/{ownLoanId}/repayments", new RecordRepaymentRequest(1120m, null, new DateOnly(2026, 1, 15), null));
+        Assert.Equal(HttpStatusCode.Accepted, recorded.StatusCode);
+        Assert.Equal(RepaymentSubmissionStatus.Pending, (await recorded.Content.ReadFromJsonAsync<RepaymentSubmissionResponse>(TestJson.Options))!.Status);
+
+        // Recording is all a marketer does: reversing a posted repayment still needs Service loans.
+        var posted = await (await admin.PostAsJsonAsync($"/api/v1/loans/{ownLoanId}/repayments", new RecordRepaymentRequest(1120m, null, new DateOnly(2026, 1, 15), null)))
+            .Content.ReadFromJsonAsync<LoanTransactionResponse>(TestJson.Options);
+        Assert.Equal(HttpStatusCode.Forbidden, (await marketer.PostAsync($"/api/v1/loans/{ownLoanId}/repayments/{posted!.Id}/reverse", null)).StatusCode);
+
+        // Another office's loans stay out of reach.
+        Assert.Equal(HttpStatusCode.NotFound, (await marketer.PostAsJsonAsync($"/api/v1/loans/{otherLoanId}/repayments", new RecordRepaymentRequest(1120m, null, null, null))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await marketer.GetAsync($"/api/v1/loans/{otherLoanId}/repayments/pay-into")).StatusCode);
     }
 }

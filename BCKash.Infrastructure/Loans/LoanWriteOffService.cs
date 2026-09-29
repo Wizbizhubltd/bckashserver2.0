@@ -1,4 +1,5 @@
 using BCKash.Application.Loans;
+using BCKash.Domain.Clients;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
@@ -90,6 +91,26 @@ public class LoanWriteOffService : ILoanWriteOffService
         loan.WrittenOffById = _currentUser.UserId;
         loan.WrittenOffDate = effectiveDate;
         loan.WrittenOffNotes = reason;
+
+        // A client who defaults loses everything they've saved (see ClientSavingsRules).
+        if (loan.ClientId is { } clientId)
+        {
+            var saved = await _db.ClientSavingsEntries.Where(e => e.ClientId == clientId).SumAsync(e => e.Amount, cancellationToken);
+            if (saved > 0)
+            {
+                _db.ClientSavingsEntries.Add(new ClientSavingsEntry
+                {
+                    ClientId = clientId,
+                    LoanId = loan.Id,
+                    Type = ClientSavingsEntryType.Forfeiture,
+                    Amount = -saved,
+                    Notes = $"Loan {loan.AccountNumber ?? $"#{loan.Id}"} written off",
+                    CreatedById = _currentUser.UserId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+            }
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
         await _glPostingService.PostWriteOffAsync(loan, transaction, cancellationToken);

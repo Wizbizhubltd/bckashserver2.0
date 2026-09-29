@@ -112,6 +112,21 @@ public class Loan : IHasTimestamps, ISoftDelete, IAuditable
     public bool IsNpa { get; set; }
     public bool IncomeSuspended { get; set; }
 
+    /// <summary>How the loan is paid out — chosen when it's raised. New; the legacy schema has no such columns.</summary>
+    public DisbursementMode? DisbursementMode { get; set; }
+
+    /// <summary>For a bank transfer: the account the loan is paid into.</summary>
+    public string? DisbursementBankName { get; set; }
+    public string? DisbursementAccountNumber { get; set; }
+    public string? DisbursementAccountName { get; set; }
+
+    /// <summary>
+    /// The share of each repayment that goes into the client's savings (see ClientSavingsRules), fixed when
+    /// the loan is disbursed. Null for loans disbursed before savings began, and for group loans — every
+    /// repayment on those goes wholly to the loan. New; no legacy column.
+    /// </summary>
+    public decimal? SavingsRate { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public DateTime? DeletedAt { get; set; }

@@ -44,7 +44,7 @@ public class LoanRescheduleControllerTests : IClassFixture<BCKashWebApplicationF
         return created!.Id;
     }
 
-    private static async Task<int> CreateDisbursedLoanAsync(HttpClient client, string label)
+    private async Task<int> CreateDisbursedLoanAsync(HttpClient client, string label)
     {
         var productId = (await (await client.PostAsJsonAsync("/api/v1/loan-products", CleanMonthlyProductRequest($"{label} Product"))).Content.ReadFromJsonAsync<LoanProductResponse>(TestJson.Options))!.Id;
         var clientId = await CreateClientAsync(client, label);
@@ -55,6 +55,7 @@ public class LoanRescheduleControllerTests : IClassFixture<BCKashWebApplicationF
         var loanId = approved!.LoanId!.Value;
 
         await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000, null));
+        await TestDataSeeder.WithoutSavingsAsync(_factory, loanId);
         return loanId;
     }
 

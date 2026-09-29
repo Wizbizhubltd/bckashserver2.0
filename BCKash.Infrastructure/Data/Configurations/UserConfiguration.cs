@@ -33,6 +33,13 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Google2faSecret).HasColumnName("google2fa_secret");
         builder.Property(u => u.Address).HasColumnName("address");
         builder.Property(u => u.Notes).HasColumnName("notes");
+        builder.Property(u => u.DateOfBirth).HasColumnName("date_of_birth").HasColumnType("date");
+        builder.Property(u => u.NextOfKinName).HasColumnName("next_of_kin_name").HasMaxLength(191);
+        builder.Property(u => u.NextOfKinPhone).HasColumnName("next_of_kin_phone").HasMaxLength(20);
+        builder.Property(u => u.NextOfKinRelationship).HasColumnName("next_of_kin_relationship").HasMaxLength(50);
+        builder.Property(u => u.BankName).HasColumnName("bank_name").HasMaxLength(100);
+        builder.Property(u => u.BankAccountNumber).HasColumnName("bank_account_number").HasMaxLength(20);
+        builder.Property(u => u.BankAccountName).HasColumnName("bank_account_name").HasMaxLength(150);
         builder.Property(u => u.TimeLimit).HasColumnName("time_limit");
         builder.Property(u => u.FromTime).HasColumnName("from_time").HasMaxLength(191);
         builder.Property(u => u.ToTime).HasColumnName("to_time").HasMaxLength(191);
@@ -74,6 +81,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.OnboardingDeclinedReason).HasColumnName("onboarding_declined_reason");
 
         builder.Property(u => u.MustChangePassword).HasColumnName("must_change_password");
+        builder.Property(u => u.PasswordResetRequestedAt).HasColumnName("password_reset_requested_at");
+        builder.Property(u => u.PasswordChangedAt).HasColumnName("password_changed_at");
         builder.Property(u => u.ActiveSessionId).HasColumnName("active_session_id").HasMaxLength(64);
         builder.Property(u => u.ActiveDeviceId).HasColumnName("active_device_id").HasMaxLength(128);
 

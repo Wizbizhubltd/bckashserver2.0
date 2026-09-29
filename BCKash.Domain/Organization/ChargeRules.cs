@@ -47,6 +47,7 @@ public static class ChargeRules
         [ChargeType.OverdueInstallmentFee] = [ChargeOption.Flat, .. InstallmentBases],
         [ChargeType.OverdueMaturity] = [ChargeOption.Flat, ChargeOption.PrincipalDue, ChargeOption.TotalDue, ChargeOption.TotalOutstanding],
         [ChargeType.EarlyRepayment] = [ChargeOption.Flat, ChargeOption.PrincipalDue, ChargeOption.TotalOutstanding],
+        [ChargeType.ApplicationFormFee] = [ChargeOption.Flat],
     };
 
     public static bool IsPenalty(ChargeType type) => PenaltyTypes.Contains(type);

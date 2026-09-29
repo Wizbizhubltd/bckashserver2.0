@@ -199,3 +199,11 @@ public enum LoanPaymentApplyTo
     Penalty,
     Regular
 }
+
+/// <summary>How a loan is paid out to the client, chosen when the loan is raised. New — the legacy schema has no such column.</summary>
+public enum DisbursementMode
+{
+    CashPickup,
+    ChequePickup,
+    BankTransfer
+}

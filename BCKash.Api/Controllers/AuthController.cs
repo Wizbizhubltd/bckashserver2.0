@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using BCKash.Api.Contracts;
 using BCKash.Application.Auth;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +21,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-        var result = await _authService.LoginAsync(request.Email, request.Password, ip, cancellationToken);
+        var result = await _authService.LoginAsync(request.Email, request.Password, ip, request.Portal, cancellationToken);
 
         return result.Outcome switch
         {
@@ -33,6 +33,7 @@ public class AuthController : ControllerBase
             LoginOutcomeType.LockedOut => Problem(title: "Too many failed attempts — try again later", statusCode: StatusCodes.Status429TooManyRequests),
             LoginOutcomeType.OutsideAccessWindow => Problem(title: "Login is not permitted at this time", statusCode: StatusCodes.Status403Forbidden),
             LoginOutcomeType.PendingOnboarding => Problem(title: "This account is awaiting authorization and cannot log in yet", statusCode: StatusCodes.Status403Forbidden),
+            LoginOutcomeType.WrongPortal => WrongPortalProblem(),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
     }
@@ -159,6 +160,18 @@ public class AuthController : ControllerBase
             RefreshOutcomeType.InvalidOrExpired => Problem(title: "Invalid or expired refresh token", statusCode: StatusCodes.Status401Unauthorized),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
+    }
+
+    /// <summary>403 with <c>reason: "wrong_portal"</c> so a portal can tell this apart from other refusals.</summary>
+    private ObjectResult WrongPortalProblem()
+    {
+        var problem = ProblemDetailsFactory.CreateProblemDetails(
+            HttpContext,
+            statusCode: StatusCodes.Status403Forbidden,
+            title: "You are not authorised to access this portal.",
+            detail: "Super admins sign in to the control portal; all other staff sign in to the office portal.");
+        problem.Extensions["reason"] = "wrong_portal";
+        return new ObjectResult(problem) { StatusCode = StatusCodes.Status403Forbidden };
     }
 
     private static UserDataResponse ToResponse(UserLoginData data) =>

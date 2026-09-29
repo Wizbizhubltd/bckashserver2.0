@@ -1,5 +1,6 @@
 using BCKash.Api.Authorization;
 using BCKash.Api.Contracts;
+using BCKash.Application.Identity;
 using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
@@ -17,21 +18,24 @@ public class ZonesController : ControllerBase
 {
     private readonly BCKashDbContext _db;
     private readonly ICurrentUserContext _currentUser;
+    private readonly IOfficeScope _scope;
 
-    public ZonesController(BCKashDbContext db, ICurrentUserContext currentUser)
+    public ZonesController(BCKashDbContext db, ICurrentUserContext currentUser, IOfficeScope scope)
     {
+        _scope = scope;
         _db = db;
         _currentUser = currentUser;
     }
 
+    /// <summary>Every zone for a super admin; a director's own zones; for anyone else, the zone their office is in.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<ZoneResponse>>> List(CancellationToken cancellationToken) =>
-        Ok(await ToResponsesAsync(_db.Zones, cancellationToken));
+        Ok(await ToResponsesAsync(await ScopedAsync(cancellationToken), cancellationToken));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ZoneResponse>> Get(int id, CancellationToken cancellationToken)
     {
-        var zone = (await ToResponsesAsync(_db.Zones.Where(z => z.Id == id), cancellationToken)).SingleOrDefault();
+        var zone = (await ToResponsesAsync((await ScopedAsync(cancellationToken)).Where(z => z.Id == id), cancellationToken)).SingleOrDefault();
         return zone is null ? NotFound() : Ok(zone);
     }
 
@@ -63,6 +67,41 @@ public class ZonesController : ControllerBase
 
         var created = (await ToResponsesAsync(_db.Zones.Where(z => z.Id == zone.Id), cancellationToken)).Single();
         return CreatedAtAction(nameof(Get), new { id = zone.Id }, created);
+    }
+
+    /// <summary>
+    /// Bulk action: moves every listed office into this zone (out of whatever zone it was in). The
+    /// directors of both zones gain or lose those offices straight away.
+    /// </summary>
+    [HttpPost("{id:int}/offices")]
+    [Authorize(Policy = AuthPolicies.SuperAdmin)]
+    public async Task<ActionResult<ZoneResponse>> AssignOffices(int id, AssignOfficesToZoneRequest request, CancellationToken cancellationToken)
+    {
+        if (!await _db.Zones.AnyAsync(z => z.Id == id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var officeIds = (request.OfficeIds ?? []).Distinct().ToList();
+        if (officeIds.Count == 0)
+        {
+            return Problem(title: "Select at least one office.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var offices = await _db.Offices.Where(o => officeIds.Contains(o.Id)).ToListAsync(cancellationToken);
+        if (offices.Count != officeIds.Count)
+        {
+            return Problem(title: "One or more offices were not found.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        foreach (var office in offices)
+        {
+            office.ZoneId = id;
+            office.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return Ok((await ToResponsesAsync(_db.Zones.Where(z => z.Id == id), cancellationToken)).Single());
     }
 
     [HttpPut("{id:int}")]
@@ -161,5 +200,23 @@ public class ZonesController : ControllerBase
                 z.CreatedById,
                 z.CreatedById.HasValue ? creatorNames.GetValueOrDefault(z.CreatedById.Value) : null);
         }).ToList();
+    }
+
+    private async Task<IQueryable<Zone>> ScopedAsync(CancellationToken cancellationToken)
+    {
+        var officeIds = await _scope.GetOfficeIdsAsync(cancellationToken);
+        if (officeIds is null)
+        {
+            return _db.Zones;
+        }
+
+        // A director's zones are the ones assigned to them, even while a zone has no offices yet.
+        if (await _scope.GetUserTypeAsync(cancellationToken) == Domain.Identity.UserTypeSlugs.Director)
+        {
+            var userId = _currentUser.UserId;
+            return _db.Zones.Where(z => _db.UserZones.Any(uz => uz.UserId == userId && uz.ZoneId == z.Id));
+        }
+
+        return _db.Zones.Where(z => _db.Offices.Any(o => o.ZoneId == z.Id && officeIds.Contains(o.Id)));
     }
 }

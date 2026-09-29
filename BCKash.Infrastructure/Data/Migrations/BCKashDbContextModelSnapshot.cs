@@ -229,6 +229,78 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.ToTable("asset_types", (string)null);
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Clients.BvnVerification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BirthDate")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("birth_date");
+
+                    b.Property<string>("Bvn")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("varchar(11)")
+                        .HasColumnName("bvn");
+
+                    b.Property<int?>("ClientId")
+                        .HasColumnType("int")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("first_name");
+
+                    b.Property<bool>("Found")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("found");
+
+                    b.Property<string>("Gender")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("gender");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("last_name");
+
+                    b.Property<string>("MiddleName")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("middle_name");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("phone");
+
+                    b.Property<int?>("RequestedById")
+                        .HasColumnType("int")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Bvn");
+
+                    b.ToTable("bvn_verifications", (string)null);
+                });
+
             modelBuilder.Entity("BCKash.Domain.Clients.Client", b =>
                 {
                     b.Property<int>("Id")
@@ -255,10 +327,27 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("address");
 
+                    b.Property<DateTime?>("BiometricEnrolledAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("biometric_enrolled_at");
+
+                    b.Property<string>("BusinessAddress")
+                        .HasColumnType("longtext")
+                        .HasColumnName("business_address");
+
                     b.Property<string>("Bvn")
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)")
                         .HasColumnName("bvn");
+
+                    b.Property<string>("BvnDetailsSource")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)")
+                        .HasColumnName("bvn_details_source");
+
+                    b.Property<DateTime?>("BvnVerifiedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("bvn_verified_at");
 
                     b.Property<string>("City")
                         .HasMaxLength(191)
@@ -329,6 +418,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("dob");
 
+                    b.Property<int?>("EditPrivilegeRequestId")
+                        .HasColumnType("int")
+                        .HasColumnName("edit_privilege_request_id");
+
                     b.Property<string>("Email")
                         .HasMaxLength(191)
                         .HasColumnType("varchar(191)")
@@ -354,6 +447,30 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(20)")
                         .HasColumnName("gender");
 
+                    b.Property<DateTime?>("HighRiskClearedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("high_risk_cleared_at");
+
+                    b.Property<int?>("HighRiskClearedById")
+                        .HasColumnType("int")
+                        .HasColumnName("high_risk_cleared_by_id");
+
+                    b.Property<string>("HighRiskClearedNote")
+                        .HasColumnType("longtext")
+                        .HasColumnName("high_risk_cleared_note");
+
+                    b.Property<DateTime?>("HighRiskFlaggedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("high_risk_flagged_at");
+
+                    b.Property<int?>("HighRiskFlaggedById")
+                        .HasColumnType("int")
+                        .HasColumnName("high_risk_flagged_by_id");
+
+                    b.Property<string>("HighRiskReason")
+                        .HasColumnType("longtext")
+                        .HasColumnName("high_risk_reason");
+
                     b.Property<int?>("InactiveById")
                         .HasColumnType("int")
                         .HasColumnName("inactive_by_id");
@@ -370,6 +487,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasMaxLength(191)
                         .HasColumnType("varchar(191)")
                         .HasColumnName("incorporation_number");
+
+                    b.Property<bool>("IsHighRisk")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_high_risk");
 
                     b.Property<DateOnly?>("JoinedDate")
                         .HasColumnType("date")
@@ -398,6 +519,11 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasMaxLength(191)
                         .HasColumnType("varchar(191)")
                         .HasColumnName("mobile");
+
+                    b.Property<string>("Nationality")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("nationality");
 
                     b.Property<string>("Notes")
                         .HasColumnType("longtext")
@@ -509,6 +635,231 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("LastName", "FirstName");
 
                     b.ToTable("clients", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Clients.ClientBiometric", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("int")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("int")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("longtext")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("ImageLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("image_location");
+
+                    b.Property<decimal?>("LivenessConfidence")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("liveness_confidence");
+
+                    b.Property<int?>("LoanId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("purpose");
+
+                    b.Property<string>("SessionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("session_id");
+
+                    b.Property<decimal?>("Similarity")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("similarity");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId");
+
+                    b.HasIndex("SessionId")
+                        .IsUnique();
+
+                    b.HasIndex("ClientId", "Purpose", "Status");
+
+                    b.ToTable("client_biometrics", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Clients.ClientContact", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasColumnType("longtext")
+                        .HasColumnName("address");
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("int")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("int")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("Gender")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("gender");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Occupation")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("occupation");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Photo")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("photo");
+
+                    b.Property<string>("Relationship")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("relationship");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "Kind");
+
+                    b.ToTable("client_contacts", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Clients.ClientEditRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("int")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("FirstEditedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("first_edited_at");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("reason");
+
+                    b.Property<int?>("RequestedById")
+                        .HasColumnType("int")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("longtext")
+                        .HasColumnName("review_note");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<int?>("ReviewedById")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("ClientId", "Status");
+
+                    b.ToTable("client_edit_requests", (string)null);
                 });
 
             modelBuilder.Entity("BCKash.Domain.Clients.ClientIdentification", b =>
@@ -857,6 +1208,63 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.ToTable("client_relationships", (string)null);
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Clients.ClientSavingsEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(65, 4)
+                        .HasColumnType("decimal(65,4)")
+                        .HasColumnName("amount");
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("int")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("int")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<int?>("LoanId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_id");
+
+                    b.Property<int?>("LoanTransactionId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_transaction_id");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("LoanTransactionId");
+
+                    b.ToTable("client_savings_entries", (string)null);
+                });
+
             modelBuilder.Entity("BCKash.Domain.Clients.ClientUser", b =>
                 {
                     b.Property<int>("Id")
@@ -896,7 +1304,7 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.ToTable("client_users", (string)null);
                 });
 
-            modelBuilder.Entity("BCKash.Domain.Clients.Document", b =>
+            modelBuilder.Entity("BCKash.Domain.Clients.DeletionRequest", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -908,6 +1316,93 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("CreatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
+
+                    b.Property<int>("EntityId")
+                        .HasColumnType("int")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityName")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("entity_name");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<int?>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("reason");
+
+                    b.Property<int?>("RequestedById")
+                        .HasColumnType("int")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("longtext")
+                        .HasColumnName("review_note");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<int?>("ReviewedById")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.ToTable("deletion_requests", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Clients.Document", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("IdNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("id_number");
+
+                    b.Property<string>("IdType")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("id_type");
 
                     b.Property<string>("Location")
                         .HasColumnType("longtext")
@@ -2170,6 +2665,11 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("removed_by_id");
 
+                    b.Property<string>("Role")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("role");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
@@ -2281,6 +2781,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("int")
+                        .HasColumnName("entity_id");
+
                     b.Property<string>("Module")
                         .HasMaxLength(191)
                         .HasColumnType("varchar(191)")
@@ -2310,6 +2814,8 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Module", "EntityId");
 
                     b.ToTable("audit_trail", (string)null);
                 });
@@ -2496,6 +3002,22 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.ToTable("roles", (string)null);
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Identity.RoleModule", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int")
+                        .HasColumnName("role_id");
+
+                    b.Property<string>("Module")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)")
+                        .HasColumnName("module");
+
+                    b.HasKey("RoleId", "Module");
+
+                    b.ToTable("role_modules", (string)null);
+                });
+
             modelBuilder.Entity("BCKash.Domain.Identity.RolePermission", b =>
                 {
                     b.Property<int>("RoleId")
@@ -2605,6 +3127,21 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("address");
 
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)")
+                        .HasColumnName("bank_account_name");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("bank_account_number");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("bank_name");
+
                     b.Property<bool>("Blocked")
                         .HasColumnType("tinyint(1)")
                         .HasColumnName("blocked");
@@ -2616,6 +3153,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Property<int?>("CreatedById")
                         .HasColumnType("int")
                         .HasColumnName("created_by_id");
+
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -2664,6 +3205,21 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("tinyint(1)")
                         .HasColumnName("must_change_password");
 
+                    b.Property<string>("NextOfKinName")
+                        .HasMaxLength(191)
+                        .HasColumnType("varchar(191)")
+                        .HasColumnName("next_of_kin_name");
+
+                    b.Property<string>("NextOfKinPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("next_of_kin_phone");
+
+                    b.Property<string>("NextOfKinRelationship")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)")
+                        .HasColumnName("next_of_kin_relationship");
+
                     b.Property<string>("Notes")
                         .HasColumnType("longtext")
                         .HasColumnName("notes");
@@ -2700,11 +3256,19 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasDefaultValue("approved")
                         .HasColumnName("onboarding_status");
 
+                    b.Property<DateTime?>("PasswordChangedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("password_changed_at");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(191)
                         .HasColumnType("varchar(191)")
                         .HasColumnName("password");
+
+                    b.Property<DateTime?>("PasswordResetRequestedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("password_reset_requested_at");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(191)
@@ -2744,6 +3308,83 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Identity.UserNotification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .HasColumnType("longtext")
+                        .HasColumnName("body");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("DoneAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("done_at");
+
+                    b.Property<int>("EntityId")
+                        .HasColumnType("int")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)")
+                        .HasColumnName("link");
+
+                    b.Property<bool>("NeedsAction")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("needs_action");
+
+                    b.Property<int?>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.HasIndex("UserId", "DoneAt");
+
+                    b.ToTable("user_notifications", (string)null);
+                });
+
             modelBuilder.Entity("BCKash.Domain.Identity.UserPermission", b =>
                 {
                     b.Property<int>("UserId")
@@ -2759,6 +3400,31 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("PermissionId");
 
                     b.ToTable("user_permissions", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Identity.UserZone", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("ZoneId")
+                        .HasColumnType("int")
+                        .HasColumnName("zone_id");
+
+                    b.Property<int?>("AssignedById")
+                        .HasColumnType("int")
+                        .HasColumnName("assigned_by_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("UserId", "ZoneId");
+
+                    b.HasIndex("ZoneId");
+
+                    b.ToTable("user_zones", (string)null);
                 });
 
             modelBuilder.Entity("BCKash.Domain.Loans.Collateral", b =>
@@ -3136,6 +3802,21 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("disbursed_notes");
 
+                    b.Property<string>("DisbursementAccountName")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)")
+                        .HasColumnName("disbursement_account_name");
+
+                    b.Property<string>("DisbursementAccountNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("disbursement_account_number");
+
+                    b.Property<string>("DisbursementBankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("disbursement_bank_name");
+
                     b.Property<DateOnly?>("DisbursementDate")
                         .HasColumnType("date")
                         .HasColumnName("disbursement_date");
@@ -3144,6 +3825,11 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasPrecision(65, 4)
                         .HasColumnType("decimal(65,4)")
                         .HasColumnName("disbursement_fees");
+
+                    b.Property<string>("DisbursementMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("disbursement_mode");
 
                     b.Property<DateOnly?>("ExpectedDisbursementDate")
                         .HasColumnType("date")
@@ -3327,6 +4013,11 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("rescheduled_notes");
 
+                    b.Property<decimal?>("SavingsRate")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("decimal(6,4)")
+                        .HasColumnName("savings_rate");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -3439,6 +4130,35 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Property<string>("DeclinedNotes")
                         .HasColumnType("longtext")
                         .HasColumnName("declined_notes");
+
+                    b.Property<string>("DisbursementAccountName")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)")
+                        .HasColumnName("disbursement_account_name");
+
+                    b.Property<string>("DisbursementAccountNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("disbursement_account_number");
+
+                    b.Property<string>("DisbursementBankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("disbursement_bank_name");
+
+                    b.Property<string>("DisbursementMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("disbursement_mode");
+
+                    b.Property<decimal?>("FormFee")
+                        .HasPrecision(65, 4)
+                        .HasColumnType("decimal(65,4)")
+                        .HasColumnName("form_fee");
+
+                    b.Property<int?>("FormFeeChargeId")
+                        .HasColumnType("int")
+                        .HasColumnName("form_fee_charge_id");
 
                     b.Property<int?>("GroupId")
                         .HasColumnType("int")
@@ -3643,6 +4363,44 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("LoanId");
 
                     b.ToTable("loan_charges", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Loans.LoanNotification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("LoanId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_id");
+
+                    b.Property<int?>("ScheduleId")
+                        .HasColumnType("int")
+                        .HasColumnName("schedule_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId", "Kind", "ScheduleId");
+
+                    b.ToTable("loan_notifications", (string)null);
                 });
 
             modelBuilder.Entity("BCKash.Domain.Loans.LoanPenaltyApplication", b =>
@@ -4575,6 +5333,83 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("LoanTransactionId");
 
                     b.ToTable("loan_transaction_repayment_schedule_mappings", (string)null);
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Loans.RepaymentSubmission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(65, 4)
+                        .HasColumnType("decimal(65,4)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisputeReason")
+                        .HasColumnType("longtext")
+                        .HasColumnName("dispute_reason");
+
+                    b.Property<int>("LoanId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_id");
+
+                    b.Property<int?>("LoanTransactionId")
+                        .HasColumnType("int")
+                        .HasColumnName("loan_transaction_id");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext")
+                        .HasColumnName("notes");
+
+                    b.Property<int?>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<DateOnly?>("PaymentDate")
+                        .HasColumnType("date")
+                        .HasColumnName("payment_date");
+
+                    b.Property<int?>("PaymentTypeId")
+                        .HasColumnType("int")
+                        .HasColumnName("payment_type_id");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<int?>("ReviewedById")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("SubmittedById")
+                        .HasColumnType("int")
+                        .HasColumnName("submitted_by_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId", "Status");
+
+                    b.HasIndex("OfficeId", "Status");
+
+                    b.ToTable("repayment_submissions", (string)null);
                 });
 
             modelBuilder.Entity("BCKash.Domain.Organization.Charge", b =>
@@ -6953,6 +7788,16 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Navigation("ClientRelationship");
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Clients.ClientSavingsEntry", b =>
+                {
+                    b.HasOne("BCKash.Domain.Loans.LoanTransaction", "LoanTransaction")
+                        .WithMany()
+                        .HasForeignKey("LoanTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("LoanTransaction");
+                });
+
             modelBuilder.Entity("BCKash.Domain.Clients.ClientUser", b =>
                 {
                     b.HasOne("BCKash.Domain.Clients.Client", "Client")
@@ -7121,6 +7966,17 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("BCKash.Domain.Identity.RoleModule", b =>
+                {
+                    b.HasOne("BCKash.Domain.Identity.Role", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+                });
+
             modelBuilder.Entity("BCKash.Domain.Identity.RolePermission", b =>
                 {
                     b.HasOne("BCKash.Domain.Identity.Permission", "Permission")
@@ -7196,6 +8052,25 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Navigation("Permission");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("BCKash.Domain.Identity.UserZone", b =>
+                {
+                    b.HasOne("BCKash.Domain.Identity.User", "User")
+                        .WithMany("UserZones")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("BCKash.Domain.Organization.Zone", "Zone")
+                        .WithMany()
+                        .HasForeignKey("ZoneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+
+                    b.Navigation("Zone");
                 });
 
             modelBuilder.Entity("BCKash.Domain.Loans.Collateral", b =>
@@ -7698,6 +8573,8 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.Navigation("RoleUsers");
 
                     b.Navigation("UserPermissions");
+
+                    b.Navigation("UserZones");
                 });
 
             modelBuilder.Entity("BCKash.Domain.Loans.CollateralType", b =>

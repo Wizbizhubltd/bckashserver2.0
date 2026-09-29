@@ -49,6 +49,7 @@ public class ChargeConfiguration : IEntityTypeConfiguration<Charge>
                     : t == ChargeType.Activation ? "activation"
                     : t == ChargeType.SharesPurchase ? "shares_purchase"
                     : t == ChargeType.EarlyRepayment ? "early_repayment"
+                    : t == ChargeType.ApplicationFormFee ? "application_form_fee"
                     : "shares_redeem",
                 s => s == "disbursement" ? ChargeType.Disbursement
                     : s == "disbursement_repayment" ? ChargeType.DisbursementRepayment
@@ -64,6 +65,7 @@ public class ChargeConfiguration : IEntityTypeConfiguration<Charge>
                     : s == "activation" ? ChargeType.Activation
                     : s == "shares_purchase" ? ChargeType.SharesPurchase
                     : s == "early_repayment" ? ChargeType.EarlyRepayment
+                    : s == "application_form_fee" ? ChargeType.ApplicationFormFee
                     : ChargeType.SharesRedeem)
             .HasMaxLength(40)
             .IsRequired();

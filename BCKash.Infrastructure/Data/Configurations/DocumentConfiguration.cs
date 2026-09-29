@@ -25,6 +25,9 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.Size).HasColumnName("size").HasMaxLength(191);
         builder.Property(d => d.Location).HasColumnName("location");
         builder.Property(d => d.Notes).HasColumnName("notes");
+        builder.Property(d => d.Category).HasColumnName("category").HasMaxLength(30);
+        builder.Property(d => d.IdType).HasColumnName("id_type").HasMaxLength(30);
+        builder.Property(d => d.IdNumber).HasColumnName("id_number").HasMaxLength(30);
         builder.Property(d => d.CreatedAt).HasColumnName("created_at");
         builder.Property(d => d.UpdatedAt).HasColumnName("updated_at");
 

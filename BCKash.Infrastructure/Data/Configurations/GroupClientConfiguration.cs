@@ -21,6 +21,7 @@ public class GroupClientConfiguration : IEntityTypeConfiguration<GroupClient>
         builder.Property(gc => gc.CreatedById).HasColumnName("created_by_id");
         builder.Property(gc => gc.RemovedAt).HasColumnName("removed_at");
         builder.Property(gc => gc.RemovedById).HasColumnName("removed_by_id");
+        builder.Property(gc => gc.Role).HasColumnName("role").HasMaxLength(20);
 
         builder.Property(gc => gc.CreatedAt).HasColumnName("created_at");
         builder.Property(gc => gc.UpdatedAt).HasColumnName("updated_at");

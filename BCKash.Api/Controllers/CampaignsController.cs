@@ -118,6 +118,9 @@ public class CampaignsController : ControllerBase
             CampaignWriteOutcome.Success => Ok(ToResponse(result.Campaign!)),
             CampaignWriteOutcome.NotFound => NotFound(),
             CampaignWriteOutcome.GatewayNotFound => Problem(title: "No SMS gateway is configured.", statusCode: StatusCodes.Status400BadRequest),
+            CampaignWriteOutcome.SmsSwitchedOff => Problem(
+                title: "SMS sending is switched off (Settings → Notifications), so this campaign wasn't sent.",
+                statusCode: StatusCodes.Status409Conflict),
             CampaignWriteOutcome.NotSendable => Problem(title: "This campaign is missing a required field (e.g. email subject) to be sent.", statusCode: StatusCodes.Status400BadRequest),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };

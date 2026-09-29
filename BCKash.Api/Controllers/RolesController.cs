@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BCKash.Api.Controllers;
 
 /// <summary>
-/// Which permissions each staff role (user_type) has — role → permission pairs that can be added
+/// Which office-portal modules each staff role can open, and which permissions it has — role → permission pairs that can be added
 /// and removed. Super admins only. The super admin role is locked to every permission, so access
 /// management can never be removed from everyone. Changes reach a staff member's session when their
 /// access token is next renewed (within its lifetime, ~15 minutes) or at their next sign-in.
@@ -34,6 +34,21 @@ public class RolesController : ControllerBase
     [HttpGet("permissions")]
     public ActionResult<IReadOnlyList<PermissionResponse>> Permissions() =>
         Ok(PermissionCatalog.All.Select(p => new PermissionResponse(p.Slug, p.Area, p.Name, p.Description)).ToList());
+
+    /// <summary>Every office-portal module that can be ticked for a role, in the order the portal shows them.</summary>
+    [HttpGet("modules")]
+    public ActionResult<IReadOnlyList<ModuleResponse>> Modules() =>
+        Ok(OfficePortalModules.All.Select(m => new ModuleResponse(m.Slug, m.Name, m.Description)).ToList());
+
+    /// <summary>Lets everyone with the role open an office-portal module. Idempotent.</summary>
+    [HttpPost("{id:int}/modules/{slug}")]
+    public Task<ActionResult<RoleResponse>> AddModule(int id, string slug, CancellationToken cancellationToken) =>
+        ChangeModuleAsync(id, slug, tick: true, cancellationToken);
+
+    /// <summary>Takes an office-portal module away from the role. Idempotent.</summary>
+    [HttpDelete("{id:int}/modules/{slug}")]
+    public Task<ActionResult<RoleResponse>> RemoveModule(int id, string slug, CancellationToken cancellationToken) =>
+        ChangeModuleAsync(id, slug, tick: false, cancellationToken);
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RoleResponse>>> List(CancellationToken cancellationToken)
@@ -124,6 +139,55 @@ public class RolesController : ControllerBase
         return Ok(await ToResponseAsync(role, cancellationToken));
     }
 
+    private async Task<ActionResult<RoleResponse>> ChangeModuleAsync(int id, string slug, bool tick, CancellationToken cancellationToken)
+    {
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id && UserTypeSlugs.All.Contains(r.Slug), cancellationToken);
+        if (role is null)
+        {
+            return NotFound();
+        }
+
+        if (role.Slug == UserTypeSlugs.SuperAdmin)
+        {
+            return Problem(title: "Super admins use the control portal, so they have no office-portal modules.", statusCode: StatusCodes.Status409Conflict);
+        }
+
+        if (!OfficePortalModules.Slugs.Contains(slug))
+        {
+            return Problem(title: $"Unknown module: {slug}.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var existing = await _db.RoleModules.FirstOrDefaultAsync(rm => rm.RoleId == id && rm.Module == slug, cancellationToken);
+        if (tick == (existing is not null))
+        {
+            return Ok(await ToResponseAsync(role, cancellationToken));
+        }
+
+        if (existing is null)
+        {
+            _db.RoleModules.Add(new RoleModule { RoleId = id, Module = slug });
+        }
+        else
+        {
+            _db.RoleModules.Remove(existing);
+        }
+
+        // RoleModule is a plain join row the audit interceptor doesn't see — record the change explicitly.
+        _db.AuditTrail.Add(new AuditTrailEntry
+        {
+            UserId = _currentUser.UserId,
+            Module = "Role",
+            Action = "Update",
+            Notes = JsonSerializer.Serialize(new { role = role.Slug, modulesAdded = tick ? new[] { slug } : [], modulesRemoved = tick ? [] : new[] { slug } }),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        role.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(await ToResponseAsync(role, cancellationToken));
+    }
+
     private async Task<RoleResponse> ToResponseAsync(Role role, CancellationToken cancellationToken)
     {
         var slugs = await _db.RolePermissions
@@ -135,6 +199,8 @@ public class RolesController : ControllerBase
         var permissions = locked
             ? PermissionCatalog.All.Select(p => p.Slug).ToList()
             : PermissionCatalog.All.Select(p => p.Slug).Where(slugs.Contains).ToList();
-        return new RoleResponse(role.Id, role.Slug, role.Name, staffCount, locked, permissions);
+        var ticked = await _db.RoleModules.Where(rm => rm.RoleId == role.Id).Select(rm => rm.Module).ToListAsync(cancellationToken);
+        var modules = OfficePortalModules.All.Select(m => m.Slug).Where(ticked.Contains).ToList();
+        return new RoleResponse(role.Id, role.Slug, role.Name, staffCount, locked, permissions, modules);
     }
 }

@@ -1,4 +1,8 @@
 using BCKash.Api.Contracts;
+using BCKash.Domain.Clients;
+using BCKash.Domain.Loans;
+using BCKash.Application.Clients;
+using BCKash.Application.Communications;
 using BCKash.Application.Loans;
 using BCKash.Application.Organization;
 using BCKash.Domain.Organization;
@@ -125,11 +129,15 @@ public class SettingsController : ControllerBase
     /// <summary>Values of keys the system acts on are stored trimmed; every other key is stored exactly as sent.</summary>
     private static string? Normalize(string key, string? value) =>
         CompanyProfileKeys.All.Contains(key) || OverdueRuleKeys.All.Contains(key) || CurrencyDisplayKeys.All.Contains(key) || key == IOfficeFundService.RequireFundsSettingKey
+        || key == LoanFaceMatchRoles.SettingKey || key == ISmsSwitch.SettingKey || ClientSavingsSettingKeys.All.Contains(key) || key == FaceCaptureRules.SettingKey
             ? value?.Trim()
             : value;
 
-    /// <summary>Rules for the keys the system acts on: company profile, overdue &amp; penalty rules, currency display.</summary>
+    /// <summary>Rules for the keys the system acts on: company profile, overdue &amp; penalty rules, currency display, office funds, loan face match roles, SMS sending.</summary>
     private static string? Validate(string key, string? value) =>
-        CompanyProfileRules.Validate(key, value) ?? OverdueRuleKeys.Validate(key, value) ?? CurrencyDisplayKeys.Validate(key, value)
-        ?? (key == IOfficeFundService.RequireFundsSettingKey && value?.Trim() is not ("0" or "1") ? "“Loans draw on office funds” must be switched on (1) or off (0)." : null);
+        CompanyProfileRules.Validate(key, value) ?? OverdueRuleKeys.Validate(key, value) ?? CurrencyDisplayKeys.Validate(key, value) ?? LoanFaceMatchRoles.Validate(key, value)
+        ?? ClientSavingsSettingKeys.Validate(key, value)
+        ?? FaceCaptureRules.Validate(key, value)
+        ?? (key == IOfficeFundService.RequireFundsSettingKey && value?.Trim() is not ("0" or "1") ? "“Loans draw on office funds” must be switched on (1) or off (0)." : null)
+        ?? (key == ISmsSwitch.SettingKey && value?.Trim() is not ("0" or "1") ? "“SMS sending” must be switched on (1) or off (0)." : null);
 }

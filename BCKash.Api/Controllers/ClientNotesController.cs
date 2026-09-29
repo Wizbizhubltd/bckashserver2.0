@@ -1,3 +1,4 @@
+using BCKash.Api.Authorization;
 using BCKash.Api.Contracts;
 using BCKash.Domain.Clients;
 using BCKash.Infrastructure.Data;
@@ -10,6 +11,7 @@ namespace BCKash.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/clients/{clientId:int}/notes")]
+[ClientRecordAccess(documentationOnly: false)]
 [Authorize]
 public class ClientNotesController : ControllerBase
 {

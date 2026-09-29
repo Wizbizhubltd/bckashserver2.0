@@ -4,6 +4,14 @@ namespace BCKash.Api.Contracts;
 
 public record OfficeBankAccountResponse(int Id, string BankName, string AccountName, string AccountNumber, bool IsDefault, bool Active, DateTime? CreatedAt);
 
+/// <summary>Where a loan's repayments are paid in: its office's default bank account, or null when the office hasn't set one.</summary>
+/// <summary>
+/// Where a loan's repayments are paid in: its office's default bank account (null fields when the office hasn't
+/// set one). <c>MaxRepayment</c>: the most that can be recorded now — what's still owed, less repayments
+/// already waiting for confirmation.
+/// </summary>
+public record RepaymentAccountResponse(string? OfficeName, string? BankName, string? AccountName, string? AccountNumber, decimal? MaxRepayment = null);
+
 public record OfficeFundingResponse(
     int Id, int OfficeId, string? OfficeName, decimal Amount, string Reference, DateOnly FundedOn, string? BankAccountLabel, string? Notes,
     OfficeFundingStatus Status, string? FundedByName, DateTime? CreatedAt,

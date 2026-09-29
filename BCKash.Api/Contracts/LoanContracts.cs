@@ -52,19 +52,28 @@ public record SaveCollateralTypeRequest(string? Name);
 
 public record LoanApplicationListItemResponse(
     int Id, LoanClientType ClientType, int? ClientId, int? GroupId, int? OfficeId, int LoanProductId,
-    decimal Amount, ApprovalStatus Status, int? LoanId);
+    decimal Amount, ApprovalStatus Status, int? LoanId,
+    string? ApplicantName = null, string? LoanProductName = null, string? OfficeName = null);
 
 public record LoanApplicationResponse(
     int Id, LoanClientType ClientType, int? UserId, int? LoanId, int? LoanPurposeId, int? CurrencyId,
     int? OfficeId, int? ClientId, int? GroupId, int LoanProductId, decimal Amount, ApprovalStatus Status,
     int? LoanTerm, FrequencyType? LoanTermType, int? ApprovedById, int? DeclinedById,
-    string? ApprovedNotes, string? DeclinedNotes, DateOnly? DeclinedDate, DateOnly? ApprovedDate, string? Notes);
+    string? ApprovedNotes, string? DeclinedNotes, DateOnly? DeclinedDate, DateOnly? ApprovedDate, string? Notes,
+    string? ApplicantName = null, string? LoanProductName = null, string? OfficeName = null,
+    DisbursementMode? DisbursementMode = null, string? DisbursementBankName = null, string? DisbursementAccountNumber = null, string? DisbursementAccountName = null,
+    decimal? FormFee = null);
 
-/// <summary><c>ClientCodeId</c>/<c>ClientCode</c>: needed for an individual client's application when client confirmation codes are on.</summary>
+/// <summary>
+/// <c>ClientCodeId</c>/<c>ClientCode</c>: needed for an individual client's application when client
+/// confirmation codes are on. <c>DisbursementMode</c>: how the loan will be paid out — required from
+/// staff with a user_type; a bank transfer also needs the account details (see DisbursementRules).
+/// </summary>
 public record CreateLoanApplicationRequest(
     LoanClientType ClientType, int? LoanPurposeId, int? CurrencyId, int? OfficeId, int? ClientId, int? GroupId,
     int LoanProductId, decimal Amount, int? LoanTerm, FrequencyType? LoanTermType, string? Notes,
-    int? ClientCodeId = null, string? ClientCode = null);
+    int? ClientCodeId = null, string? ClientCode = null,
+    DisbursementMode? DisbursementMode = null, string? DisbursementBankName = null, string? DisbursementAccountNumber = null, string? DisbursementAccountName = null);
 
 /// <summary>Sends the client a confirmation code for an application staff are about to raise for them.</summary>
 public record RequestClientCodeRequest(int ClientId, int LoanProductId, decimal Amount);
@@ -74,7 +83,8 @@ public record ClientCodeResponse(bool Required, int? CodeId, string? SentTo, Dat
 
 public record UpdateLoanApplicationRequest(
     LoanClientType ClientType, int? LoanPurposeId, int? CurrencyId, int? OfficeId, int? ClientId, int? GroupId,
-    int LoanProductId, decimal Amount, int? LoanTerm, FrequencyType? LoanTermType, string? Notes);
+    int LoanProductId, decimal Amount, int? LoanTerm, FrequencyType? LoanTermType, string? Notes,
+    DisbursementMode? DisbursementMode = null, string? DisbursementBankName = null, string? DisbursementAccountNumber = null, string? DisbursementAccountName = null);
 
 public record ApproveLoanApplicationRequest(decimal ApprovedAmount, string? Notes);
 
@@ -100,7 +110,8 @@ public record SaveCollateralRequest(int? ClientId, int? CollateralTypeId, string
 
 public record LoanListItemResponse(
     int Id, string? AccountNumber, int? ClientId, int? GroupId, int? OfficeId, int? LoanProductId,
-    decimal? AppliedAmount, decimal? ApprovedAmount, LoanStatus Status);
+    decimal? AppliedAmount, decimal? ApprovedAmount, LoanStatus Status,
+    string? ApplicantName = null, string? LoanProductName = null, string? OfficeName = null);
 
 public record LoanResponse(
     int Id, LoanClientType ClientType, int? LoanProductId, int? ClientId, int? OfficeId, int? GroupId,
@@ -111,7 +122,9 @@ public record LoanResponse(
     int? NeedChangesById, DateOnly? NeedChangesDate,
     DateOnly? DisbursementDate, int? DisbursedById, string? DisbursedNotes,
     DateOnly? WrittenOffDate, string? WrittenOffNotes,
-    bool IsNpa, bool IncomeSuspended, string? Notes);
+    bool IsNpa, bool IncomeSuspended, string? Notes,
+    string? ApplicantName = null, string? LoanProductName = null, string? OfficeName = null,
+    DisbursementMode? DisbursementMode = null, string? DisbursementBankName = null, string? DisbursementAccountNumber = null, string? DisbursementAccountName = null);
 
 /// <summary>FR-LN-8's bare disbursement transition — see LoanService.DisburseAsync's doc comment for what this intentionally does not do (no schedule generation).</summary>
 public record DisburseLoanRequest(DateOnly? DisbursementDate, decimal DisbursedAmount, string? Notes);

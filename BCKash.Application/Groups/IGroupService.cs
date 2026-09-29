@@ -8,6 +8,15 @@ public enum GroupWriteOutcome
     NotFound,
     InvalidTransition,
     ReasonRequired,
+
+    /// <summary>The staff member isn't an active marketer.</summary>
+    MarketerNotFound,
+
+    /// <summary>The marketer works in a different office from the group.</summary>
+    MarketerInDifferentOffice,
+
+    /// <summary>The group is already assigned to that marketer.</summary>
+    AlreadyAssigned,
 }
 
 public record GroupWriteResult(GroupWriteOutcome Outcome, Group? Group = null);
@@ -32,4 +41,9 @@ public interface IGroupService
     Task<GroupWriteResult> DeclineAsync(int id, string reason, CancellationToken cancellationToken = default);
 
     Task<GroupWriteResult> CloseAsync(int id, string reason, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hands the group, and every client currently in it, to another marketer in the group's office.
+    /// </summary>
+    Task<GroupWriteResult> ReassignMarketerAsync(int id, int marketerId, CancellationToken cancellationToken = default);
 }

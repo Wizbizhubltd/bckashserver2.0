@@ -31,6 +31,16 @@ public class User : IHasTimestamps, IAuditable
     public string? Address { get; set; }
     public string? Notes { get; set; }
 
+    // Onboarding details the staff member fills in themselves from their profile page (see
+    // UserProfileRules for what counts as complete).
+    public DateOnly? DateOfBirth { get; set; }
+    public string? NextOfKinName { get; set; }
+    public string? NextOfKinPhone { get; set; }
+    public string? NextOfKinRelationship { get; set; }
+    public string? BankName { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? BankAccountName { get; set; }
+
     public bool TimeLimit { get; set; }
     public string? FromTime { get; set; }
     public string? ToTime { get; set; }
@@ -61,6 +71,12 @@ public class User : IHasTimestamps, IAuditable
     /// </summary>
     public bool MustChangePassword { get; set; }
 
+    /// <summary>When an admin last forced a password reset (single or bulk). New — null on legacy rows.</summary>
+    public DateTime? PasswordResetRequestedAt { get; set; }
+
+    /// <summary>When the user last set their own password (changed it, or reset it via "forgot password"). New — null on legacy rows.</summary>
+    public DateTime? PasswordChangedAt { get; set; }
+
     // One active session per user: each new sign-in replaces these, and any access token whose
     // session id no longer matches is rejected — so signing in on a second device signs the first out.
     public string? ActiveSessionId { get; set; }
@@ -72,4 +88,5 @@ public class User : IHasTimestamps, IAuditable
     public Organization.Office? Office { get; set; }
     public ICollection<RoleUser> RoleUsers { get; set; } = new List<RoleUser>();
     public ICollection<UserPermission> UserPermissions { get; set; } = new List<UserPermission>();
+    public ICollection<UserZone> UserZones { get; set; } = new List<UserZone>();
 }

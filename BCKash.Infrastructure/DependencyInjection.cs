@@ -1,3 +1,6 @@
+using Amazon;
+using Amazon.Runtime;
+using Amazon.S3;
 using BCKash.Application.Assets;
 using BCKash.Application.Auth;
 using BCKash.Application.Clients;
@@ -13,6 +16,7 @@ using BCKash.Application.PayrollProcessing;
 using BCKash.Application.Reporting;
 using BCKash.Application.Savings;
 using BCKash.Infrastructure.Assets;
+using BCKash.Infrastructure.Aws;
 using BCKash.Infrastructure.Audit;
 using BCKash.Infrastructure.Auth;
 using BCKash.Infrastructure.Clients;
@@ -32,6 +36,7 @@ using EFCoreSecondLevelCacheInterceptor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MySqlConnector;
 using StackExchange.Redis;
 
@@ -48,6 +53,44 @@ public static class InfrastructureServiceCollectionExtensions
         services.Configure<SmsSettings>(configuration.GetSection(SmsSettings.SectionName));
         services.Configure<IdentityBootstrapSettings>(configuration.GetSection(IdentityBootstrapSettings.SectionName));
         services.Configure<OtpSettings>(o => o.MasterOtp = configuration[OtpSettings.MasterOtpKey]);
+        services.Configure<BvnGatewaySettings>(configuration.GetSection(BvnGatewaySettings.SectionName));
+        services.Configure<StaffPortalSettings>(configuration.GetSection(StaffPortalSettings.SectionName));
+
+        // UseMockBvn (see MockBvnVerificationProvider) skips the real BVN gateway for testing the
+        // onboarding flow; unset or empty means every lookup goes to the gateway.
+        var mockBvnMode = MockBvnVerificationProvider.ParseMode(configuration[MockBvnVerificationProvider.ConfigKey]);
+        if (mockBvnMode.HasValue)
+        {
+            services.AddSingleton<IBvnVerificationProvider>(new MockBvnVerificationProvider(mockBvnMode.Value));
+        }
+        else
+        {
+            services.AddHttpClient<IBvnVerificationProvider, BcKashGatewayBvnVerificationProvider>(client => client.Timeout = TimeSpan.FromSeconds(30));
+        }
+
+        // AWS: with credentials, uploads go to the S3 bucket and face biometrics use Rekognition;
+        // without them (local development, tests) files stay on disk and face capture is unavailable.
+        services.Configure<AwsSettings>(configuration.GetSection(AwsSettings.SectionName));
+        services.Configure<BiometricsSettings>(configuration.GetSection(BiometricsSettings.SectionName));
+        var aws = configuration.GetSection(AwsSettings.SectionName).Get<AwsSettings>() ?? new AwsSettings();
+        services.AddScoped<LocalDiskFileStorageService>();
+        if (aws.HasCredentials && !string.IsNullOrWhiteSpace(aws.S3Bucket))
+        {
+            services.AddSingleton<IAmazonS3>(new AmazonS3Client(
+                new BasicAWSCredentials(aws.AccessKeyId, aws.SecretAccessKey), RegionEndpoint.GetBySystemName(aws.Region)));
+            services.AddScoped<IFileStorageService, S3FileStorageService>();
+        }
+        else
+        {
+            services.AddScoped<IFileStorageService>(sp => sp.GetRequiredService<LocalDiskFileStorageService>());
+        }
+
+        if (aws.HasCredentials)
+        {
+            services.AddSingleton<IFaceBiometrics, RekognitionFaceBiometrics>();
+        }
+
+        services.AddScoped<IClientBiometricsService, ClientBiometricsService>();
 
         services.AddScoped<AuditSaveChangesInterceptor>();
 
@@ -137,6 +180,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ILoginThrottleService, LoginThrottleService>();
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IOfficeScope, OfficeScope>();
         services.AddScoped<IActiveSessionChecker, ActiveSessionChecker>();
         services.AddScoped<IOfficeService, OfficeService>();
         services.AddScoped<ICompanyProfileProvider, CompanyProfileProvider>();
@@ -145,8 +189,16 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ILoanApplicationClientCodeService, LoanApplicationClientCodeService>();
         services.AddScoped<IOverdueRulesProvider, OverdueRulesProvider>();
         services.AddScoped<ILoanPenaltyService, LoanPenaltyService>();
+        services.AddScoped<ILoanNotificationService, LoanNotificationService>();
+        services.AddScoped<ILoanCompletionService, LoanCompletionService>();
+        services.AddScoped<IRepaymentSubmissionService, RepaymentSubmissionService>();
+        services.AddScoped<IStaffNotificationService, StaffNotificationService>();
         services.AddScoped<IClientService, ClientService>();
-        services.AddScoped<IFileStorageService, LocalDiskFileStorageService>();
+        services.AddScoped<IClientAccess, ClientAccess>();
+        services.AddScoped<IClientSavingsService, ClientSavingsService>();
+        services.AddScoped<IClientSavingsSettingsProvider, ClientSavingsSettingsProvider>();
+        services.AddScoped<IDeletionService, DeletionService>();
+        services.AddScoped<IClientOnboardingService, ClientOnboardingService>();
         services.AddScoped<IGroupService, GroupService>();
         services.AddScoped<IGroupMembershipService, GroupMembershipService>();
         services.AddScoped<ILoanProductService, LoanProductService>();
@@ -203,21 +255,35 @@ public static class InfrastructureServiceCollectionExtensions
         // No test environment can actually deliver SMTP mail or hit a real SMS gateway, so the
         // same Testing:UseSqlite flag that already switches the DB provider also swaps these two
         // for recording fakes tests can inspect (see RecordingEmailSender's doc comment).
+        //
+        // Either way, every SMS goes through a wrapper that honours the "SMS sending" master switch
+        // (Settings → Notifications — see ISmsSwitch); the fakes are also registered as themselves
+        // so tests can read what they recorded.
+        services.AddScoped<ISmsSwitch, SmsSwitch>();
         if (configuration.GetValue<bool>("Testing:UseSqlite"))
         {
             services.AddSingleton<IEmailSender, RecordingEmailSender>();
-            services.AddSingleton<ISmsSender, RecordingSmsSender>();
-            services.AddSingleton<IOtpSmsSender, RecordingOtpSmsSender>();
+            services.AddSingleton<RecordingSmsSender>();
+            services.AddSingleton<RecordingOtpSmsSender>();
+            services.AddScoped<ISmsSender>(sp => new SwitchedSmsSender(
+                sp.GetRequiredService<RecordingSmsSender>(), sp.GetRequiredService<ISmsSwitch>(), sp.GetRequiredService<ILogger<SwitchedSmsSender>>()));
+            services.AddScoped<IOtpSmsSender>(sp => new SwitchedOtpSmsSender(
+                sp.GetRequiredService<RecordingOtpSmsSender>(), sp.GetRequiredService<ISmsSwitch>(), sp.GetRequiredService<ILogger<SwitchedOtpSmsSender>>()));
             services.AddScoped<IOtpDispatcher, InlineOtpDispatcher>();
         }
         else
         {
             services.AddScoped<IEmailSender, SmtpEmailSender>();
-            services.AddHttpClient<ISmsSender, HttpSmsGatewaySender>();
-            services.AddHttpClient<IOtpSmsSender, TermiiOtpSmsSender>();
+            services.AddHttpClient<HttpSmsGatewaySender>();
+            services.AddHttpClient<TermiiOtpSmsSender>();
+            services.AddScoped<ISmsSender>(sp => new SwitchedSmsSender(
+                sp.GetRequiredService<HttpSmsGatewaySender>(), sp.GetRequiredService<ISmsSwitch>(), sp.GetRequiredService<ILogger<SwitchedSmsSender>>()));
+            services.AddScoped<IOtpSmsSender>(sp => new SwitchedOtpSmsSender(
+                sp.GetRequiredService<TermiiOtpSmsSender>(), sp.GetRequiredService<ISmsSwitch>(), sp.GetRequiredService<ILogger<SwitchedOtpSmsSender>>()));
 
             // Tests drive penalty runs explicitly through ILoanPenaltyService / the run-due endpoint.
             services.AddHostedService<DailyLoanPenaltyWorker>();
+            services.AddHostedService<DailyLoanReminderWorker>();
             services.AddSingleton<BackgroundOtpDispatcher>();
             services.AddSingleton<IOtpDispatcher>(sp => sp.GetRequiredService<BackgroundOtpDispatcher>());
             services.AddHostedService(sp => sp.GetRequiredService<BackgroundOtpDispatcher>());

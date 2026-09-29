@@ -25,6 +25,12 @@ public class GroupClient : IHasTimestamps
     public DateTime? RemovedAt { get; set; }
     public int? RemovedById { get; set; }
 
+    /// <summary>
+    /// The member's part in the group — see <see cref="GroupMemberRoles"/>. The first three members
+    /// onboarded are the leader, the assistant and the organizer; everyone after is a member.
+    /// </summary>
+    public string? Role { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

@@ -21,6 +21,7 @@ public static class ChargeValidationRules
         [ChargeType.LoanReschedulingFee] = [ChargeProduct.Loan],
         [ChargeType.OverdueMaturity] = [ChargeProduct.Loan],
         [ChargeType.EarlyRepayment] = [ChargeProduct.Loan],
+        [ChargeType.ApplicationFormFee] = [ChargeProduct.Loan],
         [ChargeType.SavingsActivation] = [ChargeProduct.Savings],
         [ChargeType.WithdrawalFee] = [ChargeProduct.Savings],
         // Recurring dues: a savings maintenance fee, or a client's / group's membership fee.

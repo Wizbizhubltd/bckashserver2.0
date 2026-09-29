@@ -1,3 +1,5 @@
+using BCKash.Application.Clients;
+using BCKash.Domain.Clients;
 using BCKash.Application.Loans;
 using BCKash.Application.Organization;
 using BCKash.Domain.Loans;
@@ -15,8 +17,11 @@ public class LoanService : ILoanService
 
     private readonly IOfficeFundService _officeFunds;
 
-    public LoanService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanGlPostingService glPostingService, IOfficeFundService officeFunds)
+    private readonly IClientSavingsSettingsProvider _savingsSettings;
+
+    public LoanService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanGlPostingService glPostingService, IOfficeFundService officeFunds, IClientSavingsSettingsProvider savingsSettings)
     {
+        _savingsSettings = savingsSettings;
         _officeFunds = officeFunds;
         _db = db;
         _currentUser = currentUser;
@@ -109,6 +114,13 @@ public class LoanService : ILoanService
         loan.DisbursementDate = effectiveDisbursementDate;
         loan.DisbursedById = _currentUser.UserId;
         loan.DisbursedNotes = notes;
+
+        // A client loan's repayments set aside savings for the client (see ClientSavingsRules).
+        // The rate in force now is fixed onto the loan (Settings → Loan → Client savings); 0 means no savings.
+        if (loan.SavingsRate is null && loan.ClientId.HasValue && (await _savingsSettings.GetAsync(cancellationToken)).Rate is > 0 and var rate)
+        {
+            loan.SavingsRate = rate;
+        }
 
         var scheduleInput = new ScheduleGenerationInput(
             Principal: disbursedAmount,

@@ -128,7 +128,7 @@ public class LoanApplicationClientCodeTests : IClassFixture<BCKashWebApplication
         AuthenticatedClientFactory.CreateAsync(_factory, email, ["loan-applications.manage"]);
 
     private SentOtpSms SmsTo(string phone) =>
-        ((RecordingOtpSmsSender)_factory.Services.GetRequiredService<IOtpSmsSender>()).Sent.Last(s => s.ToPhone == phone);
+        _factory.Services.GetRequiredService<RecordingOtpSmsSender>().Sent.Last(s => s.ToPhone == phone);
 
     private static async Task<string?> ReasonAsync(HttpResponseMessage response)
     {

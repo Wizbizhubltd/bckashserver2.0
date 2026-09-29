@@ -55,6 +55,14 @@ public class LoanApplicationService : ILoanApplicationService
 
         application.UserId = _currentUser.UserId;
         application.Status = ApprovalStatus.Pending;
+
+        // Every applicant pays the application form fee in force today.
+        if (await ApplicationFormFee.CurrentAsync(_db, cancellationToken) is { } formFee)
+        {
+            application.FormFee = formFee.Amount;
+            application.FormFeeChargeId = formFee.Id;
+        }
+
         _db.LoanApplications.Add(application);
 
         // The code is used up in the same save as the application: both happen, or neither does.
@@ -131,6 +139,15 @@ public class LoanApplicationService : ILoanApplicationService
         application.LoanTermType = updated.LoanTermType;
         application.Notes = updated.Notes;
 
+        // Older callers don't send the payout details; leave what's there rather than clearing it.
+        if (updated.DisbursementMode is not null)
+        {
+            application.DisbursementMode = updated.DisbursementMode;
+            application.DisbursementBankName = updated.DisbursementBankName;
+            application.DisbursementAccountNumber = updated.DisbursementAccountNumber;
+            application.DisbursementAccountName = updated.DisbursementAccountName;
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.Success, application);
     }
@@ -191,6 +208,10 @@ public class LoanApplicationService : ILoanApplicationService
                 InterestRateType = product.InterestRateType,
                 InterestMethod = product.InterestMethod,
                 AmortizationMethod = product.AmortizationMethod,
+                DisbursementMode = application.DisbursementMode,
+                DisbursementBankName = application.DisbursementBankName,
+                DisbursementAccountNumber = application.DisbursementAccountNumber,
+                DisbursementAccountName = application.DisbursementAccountName,
                 Status = LoanStatus.Pending,
                 ApprovedById = _currentUser.UserId,
                 ApprovedDate = today,
@@ -199,6 +220,7 @@ public class LoanApplicationService : ILoanApplicationService
                 CreatedDate = today,
             };
 
+            LoanCharge? formFeeCharge = null;
             try
             {
                 _db.Loans.Add(loan);
@@ -212,6 +234,21 @@ public class LoanApplicationService : ILoanApplicationService
                 application.ApprovedDate = today;
                 application.ApprovedNotes = notes;
 
+                // The form fee stays owed on the loan as a one-time upfront charge.
+                if (application.FormFee is > 0)
+                {
+                    _db.LoanCharges.Add(formFeeCharge = new LoanCharge
+                    {
+                        Loan = loan,
+                        ChargeId = application.FormFeeChargeId,
+                        ChargeType = LoanChargeType.Disbursement,
+                        ChargeOption = LoanChargeCalculationType.Flat,
+                        Amount = application.FormFee,
+                        AmountPaid = 0m,
+                        DueDate = today,
+                    });
+                }
+
                 await _db.SaveChangesAsync(cancellationToken);
 
                 return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.Success, application);
@@ -219,6 +256,11 @@ public class LoanApplicationService : ILoanApplicationService
             catch (DbUpdateException)
             {
                 _db.Entry(loan).State = EntityState.Detached;
+                if (formFeeCharge is not null)
+                {
+                    _db.Entry(formFeeCharge).State = EntityState.Detached;
+                }
+
                 application.Loan = null;
                 application.LoanId = null;
                 application.Status = ApprovalStatus.Pending;

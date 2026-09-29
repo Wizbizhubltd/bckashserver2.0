@@ -38,6 +38,9 @@ public record ZoneResponse(
 
 public record SaveZoneRequest(string Name, string? Description);
 
+/// <summary>Offices to move into a zone in one go.</summary>
+public record AssignOfficesToZoneRequest(IReadOnlyList<int> OfficeIds);
+
 // ---- Locations (states, LGAs, cities) ----
 
 public record StateResponse(int Id, string Name);

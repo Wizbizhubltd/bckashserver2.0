@@ -51,6 +51,17 @@ public class BCKashDbContext : DbContext
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<RoleUser> RoleUsers => Set<RoleUser>();
+    public DbSet<UserZone> UserZones => Set<UserZone>();
+    public DbSet<RoleModule> RoleModules => Set<RoleModule>();
+    public DbSet<BvnVerification> BvnVerifications => Set<BvnVerification>();
+    public DbSet<DeletionRequest> DeletionRequests => Set<DeletionRequest>();
+    public DbSet<ClientBiometric> ClientBiometrics => Set<ClientBiometric>();
+    public DbSet<ClientContact> ClientContacts => Set<ClientContact>();
+    public DbSet<ClientEditRequest> ClientEditRequests => Set<ClientEditRequest>();
+    public DbSet<LoanNotification> LoanNotifications => Set<LoanNotification>();
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+    public DbSet<RepaymentSubmission> RepaymentSubmissions => Set<RepaymentSubmission>();
+    public DbSet<ClientSavingsEntry> ClientSavingsEntries => Set<ClientSavingsEntry>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
     public DbSet<Activation> Activations => Set<Activation>();
@@ -141,7 +152,7 @@ public class BCKashDbContext : DbContext
     public DbSet<ReportSchedulerRunHistory> ReportSchedulerRunHistories => Set<ReportSchedulerRunHistory>();
 
     /// <summary>Entity properties holding a phone number; normalized on every save.</summary>
-    private static readonly HashSet<string> PhonePropertyNames = new(StringComparer.Ordinal) { "Phone", "Mobile" };
+    private static readonly HashSet<string> PhonePropertyNames = new(StringComparer.Ordinal) { "Phone", "Mobile", "NextOfKinPhone" };
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

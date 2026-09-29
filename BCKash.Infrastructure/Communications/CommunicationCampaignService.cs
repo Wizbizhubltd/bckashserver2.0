@@ -11,14 +11,16 @@ public class CommunicationCampaignService : ICommunicationCampaignService
     private readonly ICampaignRecipientService _recipientService;
     private readonly ISmsSender _smsSender;
     private readonly IEmailSender _emailSender;
+    private readonly ISmsSwitch _smsSwitch;
 
     public CommunicationCampaignService(
-        BCKashDbContext db, ICampaignRecipientService recipientService, ISmsSender smsSender, IEmailSender emailSender)
+        BCKashDbContext db, ICampaignRecipientService recipientService, ISmsSender smsSender, IEmailSender emailSender, ISmsSwitch smsSwitch)
     {
         _db = db;
         _recipientService = recipientService;
         _smsSender = smsSender;
         _emailSender = emailSender;
+        _smsSwitch = smsSwitch;
     }
 
     public async Task<CampaignWriteResult> CreateAsync(CommunicationCampaign campaign, CancellationToken cancellationToken = default)
@@ -136,6 +138,12 @@ public class CommunicationCampaignService : ICommunicationCampaignService
 
         if (campaign.Type == CampaignType.Sms)
         {
+            // Refused outright rather than "sent" to nobody, so the campaign isn't marked as run.
+            if (!await _smsSwitch.IsOnAsync(cancellationToken))
+            {
+                return CampaignWriteOutcome.SmsSwitchedOff;
+            }
+
             var gateway = await _db.SmsGateways.OrderByDescending(g => g.Id).FirstOrDefaultAsync(cancellationToken);
             if (gateway is null)
             {

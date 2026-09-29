@@ -58,6 +58,19 @@ public class LoanApplicationConfiguration : IEntityTypeConfiguration<LoanApplica
         builder.Property(a => a.ApprovedDate).HasColumnName("approved_date").HasColumnType("date");
         builder.Property(a => a.Notes).HasColumnName("notes");
 
+        // New — how the loan is paid out, and for a bank transfer the account it goes to.
+        builder.Property(x => x.DisbursementMode)
+            .HasColumnName("disbursement_mode")
+            .HasConversion(
+                v => v == DisbursementMode.CashPickup ? "cash_pickup" : v == DisbursementMode.ChequePickup ? "cheque_pickup" : "bank_transfer",
+                v => v == "cash_pickup" ? DisbursementMode.CashPickup : v == "cheque_pickup" ? DisbursementMode.ChequePickup : DisbursementMode.BankTransfer)
+            .HasMaxLength(20);
+        builder.Property(x => x.DisbursementBankName).HasColumnName("disbursement_bank_name").HasMaxLength(100);
+        builder.Property(x => x.DisbursementAccountNumber).HasColumnName("disbursement_account_number").HasMaxLength(20);
+        builder.Property(x => x.DisbursementAccountName).HasColumnName("disbursement_account_name").HasMaxLength(150);
+        builder.Property(x => x.FormFee).HasColumnName("form_fee").HasPrecision(65, 4);
+        builder.Property(x => x.FormFeeChargeId).HasColumnName("form_fee_charge_id");
+
         builder.Property(a => a.CreatedAt).HasColumnName("created_at");
         builder.Property(a => a.UpdatedAt).HasColumnName("updated_at");
 
