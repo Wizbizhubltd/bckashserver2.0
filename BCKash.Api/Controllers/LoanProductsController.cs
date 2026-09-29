@@ -1,6 +1,7 @@
 using BCKash.Api.Contracts;
 using BCKash.Application.Loans;
 using BCKash.Domain.Loans;
+using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,7 +28,7 @@ public class LoanProductsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<LoanProductResponse>>> List(CancellationToken cancellationToken)
     {
-        var products = await _db.LoanProducts.ToListAsync(cancellationToken);
+        var products = await _db.LoanProducts.OrderByDescending(p => p.Id).ToListAsync(cancellationToken);
         return Ok(products.Select(ToResponse).ToList());
     }
 
@@ -51,6 +52,8 @@ public class LoanProductsController : ControllerBase
             LoanProductWriteOutcome.InvalidRange => Problem(
                 title: "Minimum must be ≤ default, and default must be ≤ maximum, for principal, term, and interest rate.",
                 statusCode: StatusCodes.Status400BadRequest),
+            LoanProductWriteOutcome.Invalid => Problem(title: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            LoanProductWriteOutcome.DuplicateName => Problem(title: "Another loan product already has this name.", statusCode: StatusCodes.Status409Conflict),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
     }
@@ -69,6 +72,8 @@ public class LoanProductsController : ControllerBase
             LoanProductWriteOutcome.InvalidRange => Problem(
                 title: "Minimum must be ≤ default, and default must be ≤ maximum, for principal, term, and interest rate.",
                 statusCode: StatusCodes.Status400BadRequest),
+            LoanProductWriteOutcome.Invalid => Problem(title: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            LoanProductWriteOutcome.DuplicateName => Problem(title: "Another loan product already has this name.", statusCode: StatusCodes.Status409Conflict),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
     }
@@ -89,6 +94,51 @@ public class LoanProductsController : ControllerBase
                 statusCode: StatusCodes.Status409Conflict),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
+    }
+
+    /// <summary>The fees and penalties attached to the product — attached penalties are the only ones the daily penalty run charges on its loans.</summary>
+    [HttpGet("{id:int}/charges")]
+    public async Task<ActionResult<IReadOnlyCollection<int>>> Charges(int id, CancellationToken cancellationToken)
+    {
+        if (!await _db.LoanProducts.AnyAsync(p => p.Id == id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        return Ok(await _db.LoanProductCharges
+            .Where(pc => pc.LoanProductId == id && pc.ChargeId.HasValue)
+            .Select(pc => pc.ChargeId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken));
+    }
+
+    /// <summary>Replaces the product's attached fees and penalties. Only active loan-level charges can be attached.</summary>
+    [HttpPut("{id:int}/charges")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<ActionResult<IReadOnlyCollection<int>>> SetCharges(int id, SetLoanProductChargesRequest request, CancellationToken cancellationToken)
+    {
+        if (!await _db.LoanProducts.AnyAsync(p => p.Id == id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var wanted = request.ChargeIds.Distinct().ToList();
+        var valid = await _db.Charges.Where(c => wanted.Contains(c.Id) && c.Product == ChargeProduct.Loan && c.Active).Select(c => c.Id).ToListAsync(cancellationToken);
+        if (valid.Count != wanted.Count)
+        {
+            return Problem(title: "Only active loan fees and penalties can be attached to a loan product.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var existing = await _db.LoanProductCharges.Where(pc => pc.LoanProductId == id).ToListAsync(cancellationToken);
+        _db.LoanProductCharges.RemoveRange(existing.Where(pc => pc.ChargeId is not { } chargeId || !wanted.Contains(chargeId)));
+        var kept = existing.Where(pc => pc.ChargeId.HasValue).Select(pc => pc.ChargeId!.Value).ToHashSet();
+        foreach (var chargeId in wanted.Where(c => !kept.Contains(c)))
+        {
+            _db.LoanProductCharges.Add(new LoanProductCharge { LoanProductId = id, ChargeId = chargeId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return Ok(wanted);
     }
 
     [HttpPost("{id:int}/activate")]

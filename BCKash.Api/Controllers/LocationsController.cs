@@ -148,7 +148,7 @@ public class LocationsController : ControllerBase
     private async Task<List<CityResponse>> ToResponsesAsync(IQueryable<City> query, CancellationToken cancellationToken)
     {
         var cities = await query
-            .OrderBy(c => c.Name)
+            .OrderByDescending(c => c.Id)
             .Select(c => new { c.Id, c.Name, c.LgaId, LgaName = c.Lga.Name, c.Lga.StateId, StateName = c.Lga.State.Name })
             .ToListAsync(cancellationToken);
 

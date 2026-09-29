@@ -27,7 +27,7 @@ public class AssetTypesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<AssetTypeResponse>>> List(CancellationToken cancellationToken)
     {
-        var types = await _db.AssetTypes.OrderBy(t => t.Name).ToListAsync(cancellationToken);
+        var types = await _db.AssetTypes.OrderByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(types.Select(ToResponse).ToList());
     }
 

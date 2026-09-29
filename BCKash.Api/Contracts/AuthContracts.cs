@@ -2,7 +2,9 @@ using System.Text.Json.Serialization;
 
 namespace BCKash.Api.Contracts;
 
-public record LoginRequest(string Email, string Password);
+// Portal: "office" or "control" — the frontend being signed in to. The control portal is for super
+// admins only and the office portal for everyone else; a mismatch is refused before any code is sent.
+public record LoginRequest(string Email, string Password, string? Portal = null);
 
 // DeviceId: a stable id the client generates once per device/browser and sends when completing a
 // sign-in. Only one device can be signed in at a time — completing a sign-in signs out the others.

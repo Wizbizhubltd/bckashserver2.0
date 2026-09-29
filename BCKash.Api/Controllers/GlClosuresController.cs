@@ -37,7 +37,7 @@ public class GlClosuresController : ControllerBase
             query = query.Where(c => c.OfficeId == officeId);
         }
 
-        var closures = await query.OrderByDescending(c => c.ClosingDate).ToListAsync(cancellationToken);
+        var closures = await query.OrderByDescending(c => c.ClosingDate).ThenByDescending(c => c.Id).ToListAsync(cancellationToken);
         return Ok(closures.Select(ToResponse).ToList());
     }
 

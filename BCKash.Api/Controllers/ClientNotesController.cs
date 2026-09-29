@@ -1,3 +1,4 @@
+using BCKash.Api.Authorization;
 using BCKash.Api.Contracts;
 using BCKash.Domain.Clients;
 using BCKash.Infrastructure.Data;
@@ -10,6 +11,7 @@ namespace BCKash.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/clients/{clientId:int}/notes")]
+[ClientRecordAccess(documentationOnly: false)]
 [Authorize]
 public class ClientNotesController : ControllerBase
 {
@@ -34,6 +36,7 @@ public class ClientNotesController : ControllerBase
 
         var items = await _db.Notes
             .Where(n => n.Type == ReferenceEntityType.Client && n.ReferenceId == clientId)
+            .OrderByDescending(n => n.Id)
             .ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }

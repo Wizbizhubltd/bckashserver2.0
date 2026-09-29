@@ -1,4 +1,5 @@
 using BCKash.Api.Contracts;
+using BCKash.Domain.Clients;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -23,7 +24,8 @@ public class LoanScheduleController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<ScheduleInstallmentResponse>>> List(int loanId, CancellationToken cancellationToken)
     {
-        if (!await _db.Loans.AnyAsync(l => l.Id == loanId, cancellationToken))
+        var loan = await _db.Loans.Where(l => l.Id == loanId).Select(l => new { l.SavingsRate }).FirstOrDefaultAsync(cancellationToken);
+        if (loan is null)
         {
             return NotFound();
         }
@@ -33,7 +35,7 @@ public class LoanScheduleController : ControllerBase
             .OrderBy(s => s.Installment)
             .ToListAsync(cancellationToken);
 
-        return Ok(items.Select(ToResponse).ToList());
+        return Ok(items.Select(s => ToResponse(s) with { CustomerPays = s.TotalDue is { } due ? ClientSavingsRules.GrossUp(due, loan.SavingsRate) : null }).ToList());
     }
 
     private static ScheduleInstallmentResponse ToResponse(LoanRepaymentSchedule s) => new(

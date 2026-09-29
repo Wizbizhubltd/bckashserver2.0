@@ -15,6 +15,13 @@ public class AuditTrailEntry
     public string? Action { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Id of the record the entry is about (e.g. the client's id when Module is "Client"), so one
+    /// record's history can be listed. Unset on older entries and on creations (whose id isn't known
+    /// until the insert — the record's own created_at/created_by cover those).
+    /// </summary>
+    public int? EntityId { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

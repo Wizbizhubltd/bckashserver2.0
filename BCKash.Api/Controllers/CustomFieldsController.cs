@@ -30,7 +30,7 @@ public class CustomFieldsController : ControllerBase
             query = query.Where(f => f.Category == category);
         }
 
-        var fields = await query.ToListAsync(cancellationToken);
+        var fields = await query.OrderByDescending(f => f.Id).ToListAsync(cancellationToken);
         return Ok(fields.Select(ToResponse).ToList());
     }
 

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using BCKash.Application.Auth;
+using BCKash.Application.Organization;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,7 @@ public class AuthService : IAuthService
     private readonly ILoginThrottleService _throttleService;
     private readonly IPermissionService _permissionService;
     private readonly IOtpDispatcher _otpDispatcher;
+    private readonly ICompanyProfileProvider _companyProfile;
     private readonly JwtSettings _jwtSettings;
     private readonly OtpSettings _otpSettings;
 
@@ -34,10 +36,12 @@ public class AuthService : IAuthService
         ILoginThrottleService throttleService,
         IPermissionService permissionService,
         IOtpDispatcher otpDispatcher,
+        ICompanyProfileProvider companyProfile,
         IOptions<JwtSettings> jwtSettings,
         IOptions<OtpSettings> otpSettings)
     {
         _db = db;
+        _companyProfile = companyProfile;
         _passwordHasher = passwordHasher;
         _totpService = totpService;
         _jwtTokenService = jwtTokenService;
@@ -48,7 +52,7 @@ public class AuthService : IAuthService
         _otpSettings = otpSettings.Value;
     }
 
-    public async Task<LoginResult> LoginAsync(string email, string password, string? ip, CancellationToken cancellationToken = default)
+    public async Task<LoginResult> LoginAsync(string email, string password, string? ip, string? portal = null, CancellationToken cancellationToken = default)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(), cancellationToken);
 
@@ -71,6 +75,11 @@ public class AuthService : IAuthService
         if (user.OnboardingStatus != UserOnboardingStatus.Approved)
         {
             return new LoginResult(LoginOutcomeType.PendingOnboarding);
+        }
+
+        if (!PortalAccessRules.CanSignIn(await GetUserTypeSlugAsync(user.Id, cancellationToken), portal))
+        {
+            return new LoginResult(LoginOutcomeType.WrongPortal);
         }
 
         if (!AccessWindowEvaluator.IsWithinWindow(user, DateTime.Now))
@@ -203,10 +212,11 @@ public class AuthService : IAuthService
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
 
+        var companyName = (await _companyProfile.GetAsync(cancellationToken)).Name;
         await SendOtpAsync(
             user,
-            "Your BCKash password reset code",
-            $"Your BCKash password reset code is {code}. It expires in {(int)PasswordResetOtpLifetime.TotalMinutes} minutes. If you didn't request this, ignore this message.",
+            $"Your {companyName} password reset code",
+            $"Your {companyName} password reset code is {code}. It expires in {(int)PasswordResetOtpLifetime.TotalMinutes} minutes. If you didn't request this, ignore this message.",
             cancellationToken);
 
         return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.Accepted,
@@ -258,6 +268,7 @@ public class AuthService : IAuthService
 
         // The user chose this password themselves, so any pending temporary-password change is done.
         user.MustChangePassword = false;
+        user.PasswordChangedAt = DateTime.UtcNow;
 
         // Whoever prompted the reset may have been using a stolen session — end it: revoke every
         // refresh token, and clear the active session so outstanding access tokens stop working too.
@@ -345,6 +356,7 @@ public class AuthService : IAuthService
 
         user.PasswordHash = _passwordHasher.Hash(newPassword);
         user.MustChangePassword = false;
+        user.PasswordChangedAt = DateTime.UtcNow;
 
         // Stay signed in on this device, but reissue the tokens: the current ones carry the
         // password-change-required claim, and older refresh tokens predate the new password.
@@ -412,10 +424,11 @@ public class AuthService : IAuthService
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
 
+        var companyName = (await _companyProfile.GetAsync(cancellationToken)).Name;
         await SendOtpAsync(
             user,
-            "Your BCKash login code",
-            $"Your BCKash login verification code is {code}. It expires in 5 minutes.",
+            $"Your {companyName} login code",
+            $"Your {companyName} login verification code is {code}. It expires in 5 minutes.",
             cancellationToken);
 
         return _jwtTokenService.GenerateLoginOtpChallengeToken(user.Id, otp.Id);

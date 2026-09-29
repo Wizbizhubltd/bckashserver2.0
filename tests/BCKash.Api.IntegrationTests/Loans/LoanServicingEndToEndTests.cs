@@ -72,6 +72,7 @@ public class LoanServicingEndToEndTests : IClassFixture<BCKashWebApplicationFact
 
         // 5. Disburse — generates the schedule.
         var disburseResponse = await client.PostAsJsonAsync($"/api/v1/loans/{loanId}/disburse", new DisburseLoanRequest(new DateOnly(2026, 1, 1), 12000m, "Disbursed for end-to-end test"));
+        await TestDataSeeder.WithoutSavingsAsync(_factory, loanId);
         Assert.Equal(HttpStatusCode.OK, disburseResponse.StatusCode);
         var disbursedLoan = await disburseResponse.Content.ReadFromJsonAsync<LoanResponse>(TestJson.Options);
         Assert.Equal(LoanStatus.Disbursed, disbursedLoan!.Status);

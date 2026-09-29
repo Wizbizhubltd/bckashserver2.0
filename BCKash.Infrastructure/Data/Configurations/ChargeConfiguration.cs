@@ -22,10 +22,12 @@ public class ChargeConfiguration : IEntityTypeConfiguration<Charge>
                 p => p == ChargeProduct.Loan ? "loan"
                     : p == ChargeProduct.Savings ? "savings"
                     : p == ChargeProduct.Shares ? "shares"
+                    : p == ChargeProduct.Group ? "group"
                     : "client",
                 s => s == "loan" ? ChargeProduct.Loan
                     : s == "savings" ? ChargeProduct.Savings
                     : s == "shares" ? ChargeProduct.Shares
+                    : s == "group" ? ChargeProduct.Group
                     : ChargeProduct.Client)
             .HasMaxLength(20)
             .IsRequired();
@@ -46,6 +48,8 @@ public class ChargeConfiguration : IEntityTypeConfiguration<Charge>
                     : t == ChargeType.MonthlyFee ? "monthly_fee"
                     : t == ChargeType.Activation ? "activation"
                     : t == ChargeType.SharesPurchase ? "shares_purchase"
+                    : t == ChargeType.EarlyRepayment ? "early_repayment"
+                    : t == ChargeType.ApplicationFormFee ? "application_form_fee"
                     : "shares_redeem",
                 s => s == "disbursement" ? ChargeType.Disbursement
                     : s == "disbursement_repayment" ? ChargeType.DisbursementRepayment
@@ -60,6 +64,8 @@ public class ChargeConfiguration : IEntityTypeConfiguration<Charge>
                     : s == "monthly_fee" ? ChargeType.MonthlyFee
                     : s == "activation" ? ChargeType.Activation
                     : s == "shares_purchase" ? ChargeType.SharesPurchase
+                    : s == "early_repayment" ? ChargeType.EarlyRepayment
+                    : s == "application_form_fee" ? ChargeType.ApplicationFormFee
                     : ChargeType.SharesRedeem)
             .HasMaxLength(40)
             .IsRequired();
@@ -125,6 +131,10 @@ public class ChargeConfiguration : IEntityTypeConfiguration<Charge>
         builder.Property(c => c.Penalty).HasColumnName("penalty");
         builder.Property(c => c.Override).HasColumnName("override");
         builder.Property(c => c.GlAccountIncomeId).HasColumnName("gl_account_income_id");
+        builder.Property(c => c.GraceDays).HasColumnName("grace_days");
+        builder.Property(c => c.RepeatEveryDays).HasColumnName("repeat_every_days");
+        builder.Property(c => c.MaxTotalPercent).HasColumnName("max_total_percent").HasPrecision(5, 2);
+        builder.Property(c => c.FreeAfterInstallments).HasColumnName("free_after_installments");
         builder.Property(c => c.CreatedAt).HasColumnName("created_at");
         builder.Property(c => c.UpdatedAt).HasColumnName("updated_at");
     }

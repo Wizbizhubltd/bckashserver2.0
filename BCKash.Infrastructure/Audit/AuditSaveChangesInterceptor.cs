@@ -67,10 +67,24 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
                 Module = module,
                 Action = action,
                 Notes = Summarize(entry),
+                EntityId = EntityIdOf(entry),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             });
         }
+    }
+
+    /// <summary>The record's int id — unknown (null) for a new record until it's inserted.</summary>
+    private static int? EntityIdOf(EntityEntry entry)
+    {
+        var key = entry.Metadata.FindPrimaryKey();
+        if (key is not { Properties.Count: 1 })
+        {
+            return null;
+        }
+
+        var property = entry.Property(key.Properties[0].Name);
+        return !property.IsTemporary && property.CurrentValue is int id && id > 0 ? id : null;
     }
 
     private static string Summarize(EntityEntry entry)

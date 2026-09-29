@@ -24,7 +24,7 @@ public class CollateralTypesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<CollateralTypeResponse>>> List(CancellationToken cancellationToken)
     {
-        var items = await _db.CollateralTypes.ToListAsync(cancellationToken);
+        var items = await _db.CollateralTypes.OrderByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

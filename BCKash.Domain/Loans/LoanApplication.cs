@@ -51,6 +51,21 @@ public class LoanApplication : IHasTimestamps
     public DateOnly? ApprovedDate { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>How the loan is paid out — chosen when it's raised. New; the legacy schema has no such columns.</summary>
+    public DisbursementMode? DisbursementMode { get; set; }
+
+    /// <summary>For a bank transfer: the account the loan is paid into.</summary>
+    public string? DisbursementBankName { get; set; }
+    public string? DisbursementAccountNumber { get; set; }
+    public string? DisbursementAccountName { get; set; }
+
+    /// <summary>
+    /// The application form fee in force when the application was raised (see ChargeType.ApplicationFormFee);
+    /// null when none was set. Carried onto the loan as an upfront charge when it's approved.
+    /// </summary>
+    public decimal? FormFee { get; set; }
+    public int? FormFeeChargeId { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

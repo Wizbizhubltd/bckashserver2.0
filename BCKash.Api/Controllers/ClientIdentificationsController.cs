@@ -1,3 +1,4 @@
+using BCKash.Api.Authorization;
 using BCKash.Api.Contracts;
 using BCKash.Domain.Clients;
 using BCKash.Infrastructure.Data;
@@ -14,6 +15,7 @@ namespace BCKash.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/clients/{clientId:int}/identifications")]
+[ClientRecordAccess]
 [Authorize]
 public class ClientIdentificationsController : ControllerBase
 {
@@ -34,7 +36,7 @@ public class ClientIdentificationsController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.ClientIdentifications.Where(ci => ci.ClientId == clientId).ToListAsync(cancellationToken);
+        var items = await _db.ClientIdentifications.Where(ci => ci.ClientId == clientId).OrderByDescending(ci => ci.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

@@ -1,5 +1,6 @@
 using BCKash.Application.Groups;
 using BCKash.Domain.Groups;
+using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -169,6 +170,46 @@ public class GroupService : IGroupService
         group.ClosedDate = DateOnly.FromDateTime(DateTime.UtcNow);
         group.ClosedById = _currentUser.UserId;
         group.ClosedReason = reason;
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return new GroupWriteResult(GroupWriteOutcome.Success, group);
+    }
+
+    public async Task<GroupWriteResult> ReassignMarketerAsync(int id, int marketerId, CancellationToken cancellationToken = default)
+    {
+        var group = await _db.Groups.FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+        if (group is null)
+        {
+            return new GroupWriteResult(GroupWriteOutcome.NotFound);
+        }
+
+        var marketer = await _db.Users
+            .Where(u => u.Id == marketerId && !u.Blocked && _db.RoleUsers.Any(ru => ru.UserId == u.Id && ru.Role.Slug == UserTypeSlugs.Marketer))
+            .Select(u => new { u.Id, u.OfficeId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (marketer is null)
+        {
+            return new GroupWriteResult(GroupWriteOutcome.MarketerNotFound);
+        }
+
+        if (group.OfficeId.HasValue && marketer.OfficeId != group.OfficeId)
+        {
+            return new GroupWriteResult(GroupWriteOutcome.MarketerInDifferentOffice);
+        }
+
+        if (group.StaffId == marketerId)
+        {
+            return new GroupWriteResult(GroupWriteOutcome.AlreadyAssigned);
+        }
+
+        group.StaffId = marketerId;
+
+        // The group's current members follow it, so the new marketer can see and serve them.
+        var memberClientIds = _db.GroupClients.Where(gc => gc.GroupId == id && gc.RemovedAt == null && gc.ClientId != null).Select(gc => gc.ClientId!.Value);
+        foreach (var client in await _db.Clients.Where(c => memberClientIds.Contains(c.Id) && c.DeletedAt == null).ToListAsync(cancellationToken))
+        {
+            client.StaffId = marketerId;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
         return new GroupWriteResult(GroupWriteOutcome.Success, group);

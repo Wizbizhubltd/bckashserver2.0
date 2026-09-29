@@ -27,7 +27,7 @@ public class OtherIncomeTypesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<OtherIncomeTypeResponse>>> List(CancellationToken cancellationToken)
     {
-        var types = await _db.OtherIncomeTypes.OrderBy(t => t.Name).ToListAsync(cancellationToken);
+        var types = await _db.OtherIncomeTypes.OrderByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(types.Select(ToResponse).ToList());
     }
 

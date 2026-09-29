@@ -27,7 +27,7 @@ public class GlAccountsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<GlAccountResponse>>> List(CancellationToken cancellationToken)
     {
-        var accounts = await _db.GlAccounts.ToListAsync(cancellationToken);
+        var accounts = await _db.GlAccounts.OrderByDescending(a => a.Id).ToListAsync(cancellationToken);
         return Ok(accounts.Select(ToResponse).ToList());
     }
 

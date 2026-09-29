@@ -1,5 +1,7 @@
 using BCKash.Api.Contracts;
+using BCKash.Api.Infrastructure;
 using BCKash.Application.Groups;
+using BCKash.Application.Identity;
 using BCKash.Domain.Clients;
 using BCKash.Domain.Groups;
 using BCKash.Infrastructure.Data;
@@ -19,11 +21,59 @@ public class GroupMembersController : ControllerBase
 
     private readonly BCKashDbContext _db;
     private readonly IGroupMembershipService _membershipService;
+    private readonly IOfficeScope _scope;
 
-    public GroupMembersController(BCKashDbContext db, IGroupMembershipService membershipService)
+    public GroupMembersController(BCKashDbContext db, IGroupMembershipService membershipService, IOfficeScope scope)
     {
         _db = db;
         _membershipService = membershipService;
+        _scope = scope;
+    }
+
+    /// <summary>
+    /// Bulk action: moves the ticked clients out of their current group into this one. Clients with an
+    /// open loan or application, defaulters, and clients from another office stay put and are reported back.
+    /// </summary>
+    [HttpPost("bulk-move")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<ActionResult<BulkActionResponse>> BulkMove(int groupId, BulkMoveClientsRequest request, CancellationToken cancellationToken)
+    {
+        if (request.ClientIds is not { Count: > 0 })
+        {
+            return Problem(title: "Select at least one client.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var officeIds = await _scope.GetOfficeIdsAsync(cancellationToken);
+        var group = await _db.Groups.FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
+        if (group is null || (officeIds is not null && !(group.OfficeId.HasValue && officeIds.Contains(group.OfficeId.Value))))
+        {
+            return NotFound();
+        }
+
+        var ids = request.ClientIds.Distinct().ToList();
+        var clients = await _db.Clients
+            .Where(c => ids.Contains(c.Id) && c.DeletedAt == null)
+            .Where(c => officeIds == null || (c.OfficeId.HasValue && officeIds.Contains(c.OfficeId.Value)))
+            .OrderByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        return Ok(await BulkActionRunner.RunAsync(
+            clients,
+            ids,
+            c => c.Id,
+            c => $"{c.FirstName} {c.LastName}".Trim() is { Length: > 0 } name ? name : c.AccountNo ?? $"Client #{c.Id}",
+            async c => (await _membershipService.MoveAsync(c.Id, groupId, cancellationToken)).Outcome switch
+            {
+                MembershipWriteOutcome.Success => null,
+                MembershipWriteOutcome.HasActiveLoan => "Has an active loan.",
+                MembershipWriteOutcome.Defaulter => "Is a defaulter.",
+                MembershipWriteOutcome.DifferentOffice => "Is in a different office from the group.",
+                MembershipWriteOutcome.AlreadyAMember => "Already in this group.",
+                MembershipWriteOutcome.GroupNotOpen => "The group isn't taking members.",
+                _ => "Not found.",
+            },
+            "Client"));
     }
 
     /// <summary>Defaults to the current roster (RemovedAt IS NULL); <paramref name="includeRemoved"/>=true returns the full membership history.</summary>
@@ -41,7 +91,7 @@ public class GroupMembersController : ControllerBase
             query = query.Where(gc => gc.RemovedAt == null);
         }
 
-        var memberships = await query.ToListAsync(cancellationToken);
+        var memberships = await query.OrderByDescending(gc => gc.Id).ToListAsync(cancellationToken);
         var clientIds = memberships.Select(m => m.ClientId).Where(id => id.HasValue).Select(id => id!.Value).ToList();
         var clientsById = await _db.Clients
             .Where(c => clientIds.Contains(c.Id))
@@ -93,6 +143,7 @@ public class GroupMembersController : ControllerBase
         var client = membership.ClientId.HasValue && clientsById.TryGetValue(membership.ClientId.Value, out var c) ? c : null;
         return new GroupMemberResponse(
             membership.Id, membership.ClientId, client?.DisplayName, client?.AccountNo,
-            membership.CreatedAt, membership.CreatedById, membership.RemovedAt, membership.RemovedById);
+            membership.CreatedAt, membership.CreatedById, membership.RemovedAt, membership.RemovedById,
+            membership.Role, client?.Status, client?.IsHighRisk ?? false);
     }
 }

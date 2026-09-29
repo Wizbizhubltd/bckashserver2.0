@@ -12,15 +12,19 @@ internal static class OtpDelivery
     // Delivery is best-effort per channel: a failure on one (a bad Termii key, SMTP relay
     // hiccup, etc.) must not block the other from going out, and must never surface as a
     // request failure — the OTP row already exists, so the user can still receive/retry it.
+    // Customers' loan messages (LoanNotificationService) go through here too, one channel per message.
     public static async Task SendAsync(IEmailSender emailSender, IOtpSmsSender smsSender, ILogger logger, OtpMessage message, CancellationToken cancellationToken)
     {
-        try
+        if (!string.IsNullOrWhiteSpace(message.Email))
         {
-            await emailSender.SendAsync(message.Email, message.Subject, message.Body, null, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to email OTP to {Email}", message.Email);
+            try
+            {
+                await emailSender.SendAsync(message.Email, message.Subject, message.Body, null, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to email \"{Subject}\" to {Email}", message.Subject, message.Email);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(message.Phone))
@@ -31,7 +35,7 @@ internal static class OtpDelivery
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to SMS OTP to {Phone}", message.Phone);
+                logger.LogError(ex, "Failed to send an SMS to {Phone}", message.Phone);
             }
         }
     }

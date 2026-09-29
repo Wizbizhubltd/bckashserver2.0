@@ -27,7 +27,7 @@ public class ExpenseTypesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ExpenseTypeResponse>>> List(CancellationToken cancellationToken)
     {
-        var types = await _db.ExpenseTypes.OrderBy(t => t.Name).ToListAsync(cancellationToken);
+        var types = await _db.ExpenseTypes.OrderByDescending(t => t.Id).ToListAsync(cancellationToken);
         return Ok(types.Select(ToResponse).ToList());
     }
 

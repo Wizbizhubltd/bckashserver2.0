@@ -129,7 +129,7 @@ public class AssetsController : ControllerBase
     [HttpGet("{id:int}/depreciation-schedule")]
     public async Task<ActionResult<IReadOnlyList<AssetDepreciationResponse>>> DepreciationSchedule(int id, CancellationToken cancellationToken)
     {
-        var rows = await _db.AssetDepreciations.Where(d => d.AssetId == id).OrderBy(d => d.Id).ToListAsync(cancellationToken);
+        var rows = await _db.AssetDepreciations.Where(d => d.AssetId == id).OrderByDescending(d => d.Id).ToListAsync(cancellationToken);
         return Ok(rows.Select(ToDepreciationResponse).ToList());
     }
 

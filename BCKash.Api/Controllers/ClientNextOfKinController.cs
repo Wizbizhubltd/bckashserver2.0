@@ -1,3 +1,4 @@
+using BCKash.Api.Authorization;
 using BCKash.Api.Contracts;
 using BCKash.Domain.Clients;
 using BCKash.Infrastructure.Data;
@@ -9,6 +10,7 @@ namespace BCKash.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/clients/{clientId:int}/next-of-kin")]
+[ClientRecordAccess]
 [Authorize]
 public class ClientNextOfKinController : ControllerBase
 {
@@ -29,7 +31,7 @@ public class ClientNextOfKinController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.ClientNextOfKin.Where(k => k.ClientId == clientId).ToListAsync(cancellationToken);
+        var items = await _db.ClientNextOfKin.Where(k => k.ClientId == clientId).OrderByDescending(k => k.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

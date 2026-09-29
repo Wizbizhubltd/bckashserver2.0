@@ -1,4 +1,5 @@
 using BCKash.Api.Contracts;
+using BCKash.Application.Identity;
 using BCKash.Application.Organization;
 using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
@@ -17,14 +18,19 @@ public class OfficesController : ControllerBase
 
     private readonly BCKashDbContext _db;
     private readonly IOfficeService _officeService;
+    private readonly IOfficeScope _scope;
 
-    public OfficesController(BCKashDbContext db, IOfficeService officeService)
+    public OfficesController(BCKashDbContext db, IOfficeService officeService, IOfficeScope scope)
     {
+        _scope = scope;
         _db = db;
         _officeService = officeService;
     }
 
-    /// <summary>All offices (unpaginated — it's reference-data sized), optionally filtered. Every filter is optional and they combine.</summary>
+    /// <summary>
+    /// All offices the caller works in (unpaginated — it's reference-data sized): every office for a
+    /// super admin, a director's zones' offices, or everyone else's own office. Every filter is optional and they combine.
+    /// </summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<OfficeResponse>>> List(
         [FromQuery] OfficeTypeFilter? type,
@@ -34,7 +40,7 @@ public class OfficesController : ControllerBase
         [FromQuery] int? zoneId,
         CancellationToken cancellationToken)
     {
-        var query = _db.Offices.AsQueryable();
+        var query = await ScopedAsync(_db.Offices, cancellationToken);
         if (type.HasValue) query = query.Where(o => o.DefaultOffice == (type == OfficeTypeFilter.Head));
         if (stateId.HasValue) query = query.Where(o => o.StateId == stateId);
         if (lgaId.HasValue) query = query.Where(o => o.LgaId == lgaId);
@@ -47,7 +53,7 @@ public class OfficesController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<OfficeResponse>> Get(int id, CancellationToken cancellationToken)
     {
-        var office = (await ToResponsesAsync(_db.Offices.Where(o => o.Id == id), cancellationToken)).SingleOrDefault();
+        var office = (await ToResponsesAsync((await ScopedAsync(_db.Offices, cancellationToken)).Where(o => o.Id == id), cancellationToken)).SingleOrDefault();
         return office is null ? NotFound() : Ok(office);
     }
 
@@ -132,6 +138,15 @@ public class OfficesController : ControllerBase
         };
     }
 
+    /// <summary>Assigns the office's branch manager without resubmitting the whole office. <c>managerId</c> null removes them.</summary>
+    [HttpPost("{id:int}/manager")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<IActionResult> AssignManager(int id, AssignOfficeManagerRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _officeService.AssignManagerAsync(id, request.ManagerId, cancellationToken);
+        return result.Outcome == OfficeWriteOutcome.Success ? await OkResponseAsync(id, cancellationToken) : ToProblem(result.Outcome);
+    }
+
     [HttpPost("{id:int}/activate")]
     [Authorize(Policy = ManagePolicy)]
     public async Task<IActionResult> Activate(int id, CancellationToken cancellationToken)
@@ -151,6 +166,8 @@ public class OfficesController : ControllerBase
             title: "The selected LGA must be in the selected state, and the city in the selected LGA.",
             statusCode: StatusCodes.Status400BadRequest),
         OfficeWriteOutcome.ZoneNotFound => Problem(title: "Zone not found.", statusCode: StatusCodes.Status400BadRequest),
+        OfficeWriteOutcome.InvalidManager => Problem(title: "The branch manager must be an active staff member.", statusCode: StatusCodes.Status400BadRequest),
+        OfficeWriteOutcome.DuplicateName => Problem(title: "An office with this name already exists.", statusCode: StatusCodes.Status409Conflict),
         _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
     };
 
@@ -165,7 +182,7 @@ public class OfficesController : ControllerBase
             .Include(o => o.Lga)
             .Include(o => o.City)
             .Include(o => o.Zone)
-            .OrderBy(o => o.Id)
+            .OrderByDescending(o => o.Id)
             .ToListAsync(cancellationToken);
 
         var officeIds = offices.Select(o => o.Id).ToList();
@@ -194,5 +211,11 @@ public class OfficesController : ControllerBase
             o.CreatedAt,
             o.CreatedById,
             o.CreatedById.HasValue ? creatorNames.GetValueOrDefault(o.CreatedById.Value) : null)).ToList();
+    }
+
+    private async Task<IQueryable<Office>> ScopedAsync(IQueryable<Office> query, CancellationToken cancellationToken)
+    {
+        var officeIds = await _scope.GetOfficeIdsAsync(cancellationToken);
+        return officeIds is null ? query : query.Where(o => officeIds.Contains(o.Id));
     }
 }

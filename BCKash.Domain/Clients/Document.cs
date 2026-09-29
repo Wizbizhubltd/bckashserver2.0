@@ -17,6 +17,11 @@ public class Document : IHasTimestamps
     public string? Location { get; set; }
     public string? Notes { get; set; }
 
+    // For a client's documents (see ClientDocumentRules): which one it is, and the number it carries.
+    public string? Category { get; set; }
+    public string? IdType { get; set; }
+    public string? IdNumber { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

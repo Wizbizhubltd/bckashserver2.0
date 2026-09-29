@@ -1,5 +1,6 @@
 using BCKash.Application.Auth;
 using BCKash.Application.Communications;
+using BCKash.Application.Organization;
 using BCKash.Domain.Identity;
 using BCKash.Infrastructure.Auth;
 using BCKash.Infrastructure.Data;
@@ -14,8 +15,9 @@ namespace BCKash.Infrastructure.Identity;
 /// <summary>
 /// Seeds the RBAC scaffolding the new user_type/user_class model needs, and the very first
 /// super admin — idempotent (NFR-10), safe to run on every boot:
-/// 1. Every permission slug any controller currently checks for (a Permission row must exist
-///    for a role to be granted it — see BCKash.Api/Authorization/PermissionPolicyProvider.cs).
+/// 1. Every permission in PermissionCatalog — the ones controllers actually check (a Permission
+///    row must exist for a role to be granted it — see PermissionPolicyProvider), with its name
+///    and description kept up to date.
 /// 2. The five user_type roles (super_admin/controller/director/manager/marketer — see
 ///    UserTypeSlugs), each wired to a starting permission set. This is a reasonable default,
 ///    not a business-confirmed mapping — adjust via ordinary RolePermission rows at any time,
@@ -27,21 +29,10 @@ namespace BCKash.Infrastructure.Identity;
 /// </summary>
 public class IdentityBootstrapSeeder : IHostedService
 {
-    private static readonly string[] AllKnownPermissionSlugs =
-    [
-        "organization.manage", "clients.manage", "groups.manage",
-        "loan-products.manage", "loan-applications.manage", "loan-applications.approve", "loan-servicing.manage",
-        "savings-products.manage", "savings-accounts.manage",
-        "gl.manage", "gl.closure-reopen", "settings.manage",
-        "assets.manage",
-        "expenses.manage", "expenses.approve", "expense-budgets.manage", "expense-budgets.approve",
-        "other-income.manage", "other-income.approve",
-        "payroll.manage", "payroll.run",
-        "campaigns.manage", "campaigns.run",
-        "reports.view", "report-schedules.manage",
-        "users.manage",
-    ];
+    private static readonly string[] AllKnownPermissionSlugs = PermissionCatalog.All.Select(p => p.Slug).ToArray();
 
+    // Includes the permissions each role's default office-portal modules need (OfficePortalModules.Defaults).
+    // Migration AddDirectorZonesAndStaffProfile adds those grants to roles seeded before this.
     private static readonly IReadOnlyDictionary<string, string[]> DefaultRolePermissions = new Dictionary<string, string[]>
     {
         [UserTypeSlugs.SuperAdmin] = AllKnownPermissionSlugs,
@@ -49,6 +40,7 @@ public class IdentityBootstrapSeeder : IHostedService
         [
             "organization.manage", "users.manage", "gl.manage", "gl.closure-reopen", "settings.manage",
             "reports.view", "report-schedules.manage", "loan-applications.approve",
+            "clients.manage", "groups.manage", "loan-applications.manage", "loan-servicing.manage", "loan-repayments.record",
             "expenses.approve", "expense-budgets.approve", "other-income.approve", "payroll.manage",
         ],
         [UserTypeSlugs.Director] =
@@ -56,15 +48,16 @@ public class IdentityBootstrapSeeder : IHostedService
             "organization.manage", "users.manage", "reports.view", "report-schedules.manage",
             "loan-applications.approve", "expenses.approve", "expense-budgets.approve", "other-income.approve",
             "gl.manage", "gl.closure-reopen", "settings.manage", "campaigns.manage",
+            "clients.manage", "groups.manage", "loan-applications.manage",
         ],
         [UserTypeSlugs.Manager] =
         [
-            "clients.manage", "groups.manage", "loan-products.manage", "loan-applications.manage", "loan-servicing.manage",
-            "savings-products.manage", "savings-accounts.manage", "assets.manage",
+            "users.manage", "clients.manage", "groups.manage", "loan-products.manage", "loan-applications.manage", "loan-servicing.manage",
+            "loan-repayments.record", "savings-products.manage", "savings-accounts.manage", "assets.manage",
             "expenses.manage", "expense-budgets.manage", "other-income.manage", "payroll.run",
             "campaigns.manage", "campaigns.run", "reports.view",
         ],
-        [UserTypeSlugs.Marketer] = ["clients.manage", "groups.manage", "loan-applications.manage", "campaigns.run", "reports.view"],
+        [UserTypeSlugs.Marketer] = ["clients.manage", "groups.manage", "loan-applications.manage", "loan-repayments.record", "campaigns.run", "reports.view"],
     };
 
     private readonly IServiceProvider _serviceProvider;
@@ -79,32 +72,37 @@ public class IdentityBootstrapSeeder : IHostedService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
 
-        var permissionsBySlug = await SeedPermissionsAsync(db, cancellationToken);
+        var (permissionsBySlug, addedSlugs) = await SeedPermissionsAsync(db, cancellationToken);
         var rolesBySlug = await SeedUserTypeRolesAsync(db, cancellationToken);
-        await SeedRolePermissionsAsync(db, rolesBySlug, permissionsBySlug, cancellationToken);
+        await SeedRolePermissionsAsync(db, rolesBySlug, permissionsBySlug, addedSlugs, cancellationToken);
         await SeedSuperAdminAsync(scope.ServiceProvider, db, rolesBySlug, cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private static async Task<Dictionary<string, Permission>> SeedPermissionsAsync(BCKashDbContext db, CancellationToken cancellationToken)
+    /// <summary>Every catalogue permission, and the slugs of those that didn't exist until now.</summary>
+    private static async Task<(Dictionary<string, Permission> BySlug, HashSet<string> Added)> SeedPermissionsAsync(BCKashDbContext db, CancellationToken cancellationToken)
     {
         var existing = await db.Permissions.Where(p => p.Slug != null).ToDictionaryAsync(p => p.Slug!, cancellationToken);
+        var added = new HashSet<string>();
 
-        foreach (var slug in AllKnownPermissionSlugs)
+        foreach (var definition in PermissionCatalog.All)
         {
-            if (existing.ContainsKey(slug))
+            if (!existing.TryGetValue(definition.Slug, out var permission))
             {
-                continue;
+                permission = new Permission { Slug = definition.Slug };
+                db.Permissions.Add(permission);
+                existing[definition.Slug] = permission;
+                added.Add(definition.Slug);
             }
 
-            var permission = new Permission { Name = slug, Slug = slug };
-            db.Permissions.Add(permission);
-            existing[slug] = permission;
+            // Keep the readable name and description in step with the catalogue.
+            permission.Name = definition.Name;
+            permission.Description = definition.Description;
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return existing;
+        return (existing, added);
     }
 
     private static async Task<Dictionary<string, Role>> SeedUserTypeRolesAsync(BCKashDbContext db, CancellationToken cancellationToken)
@@ -121,22 +119,54 @@ public class IdentityBootstrapSeeder : IHostedService
             var role = new Role { Slug = slug, Name = ToDisplayName(slug), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
             db.Roles.Add(role);
             existing[slug] = role;
+
+            // Only on creation — afterwards the super admin owns which modules a role has, including none.
+            foreach (var module in OfficePortalModules.Defaults.GetValueOrDefault(slug) ?? [])
+            {
+                db.RoleModules.Add(new RoleModule { Role = role, Module = module });
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
         return existing;
     }
 
-    /// <summary>Only fills in permissions for a role that currently has none — an operator who has already customized a role's permissions via the API is never overwritten on restart.</summary>
+    /// <summary>
+    /// Only fills in permissions for a role that currently has none — an operator who has already customized a
+    /// role's permissions via the API is never overwritten on restart. The exception is a permission new to the
+    /// catalogue (<paramref name="addedSlugs"/>): it's granted once to the roles that have it by default, since
+    /// nobody could have chosen it before it existed. Super admins can untick it afterwards.
+    /// </summary>
     private static async Task SeedRolePermissionsAsync(
-        BCKashDbContext db, Dictionary<string, Role> rolesBySlug, Dictionary<string, Permission> permissionsBySlug, CancellationToken cancellationToken)
+        BCKashDbContext db, Dictionary<string, Role> rolesBySlug, Dictionary<string, Permission> permissionsBySlug, HashSet<string> addedSlugs, CancellationToken cancellationToken)
     {
         foreach (var (roleSlug, permissionSlugs) in DefaultRolePermissions)
         {
             var role = rolesBySlug[roleSlug];
-            var hasAny = await db.RolePermissions.AnyAsync(rp => rp.RoleId == role.Id, cancellationToken);
-            if (hasAny)
+            var granted = await db.RolePermissions.Where(rp => rp.RoleId == role.Id).Select(rp => rp.PermissionId).ToListAsync(cancellationToken);
+
+            // Super admin always holds every permission — including ones added to the catalogue
+            // after it was first seeded. Its permissions can't be edited (see RolesController).
+            if (roleSlug == UserTypeSlugs.SuperAdmin)
             {
+                foreach (var permission in permissionsBySlug.Where(p => PermissionCatalog.Slugs.Contains(p.Key)).Select(p => p.Value))
+                {
+                    if (!granted.Contains(permission.Id))
+                    {
+                        db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
+                    }
+                }
+
+                continue;
+            }
+
+            if (granted.Count > 0)
+            {
+                foreach (var permissionSlug in permissionSlugs.Where(addedSlugs.Contains))
+                {
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permissionsBySlug[permissionSlug].Id });
+                }
+
                 continue;
             }
 
@@ -167,6 +197,7 @@ public class IdentityBootstrapSeeder : IHostedService
 
         var passwordHasher = services.GetRequiredService<IPasswordHasher>();
         var emailSender = services.GetRequiredService<IEmailSender>();
+        var companyProfile = services.GetRequiredService<ICompanyProfileProvider>();
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
 
         var superAdmin = new User
@@ -201,14 +232,16 @@ public class IdentityBootstrapSeeder : IHostedService
         // so the account is still reachable.
         try
         {
+            var company = await companyProfile.GetAsync(cancellationToken);
             await emailSender.SendAsync(
                 superAdmin.Email,
-                "Your BCKash super admin account",
+                $"Your {company.Name} super admin account",
                 $"Hello {superAdmin.FirstName},\n\n" +
-                "A super admin account has been created for you on the BCKash portal.\n\n" +
+                $"A super admin account has been created for you on the {company.Name} portal.\n\n" +
                 $"Email: {superAdmin.Email}\n" +
                 $"Temporary password: {temporaryPassword}\n\n" +
-                "Please log in and change this password immediately.",
+                "Please log in and change this password immediately." +
+                company.EmailFooter,
                 null,
                 cancellationToken);
         }

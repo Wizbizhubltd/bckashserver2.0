@@ -19,7 +19,7 @@
 #   5. flushes the Redis query cache and starts the api again (its seeders then add the new
 #      RBAC roles/permissions alongside the legacy ones)
 #
-# Refuses to run if DB_NAME already has users, unless --force (which wipes and re-seeds).
+# Refuses to run if DB_NAME already has clients, unless --force (which wipes and re-seeds).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -63,9 +63,12 @@ done
 curl -s -o /dev/null "http://localhost:$API_PORT/" || {
     echo "API didn't come up on port $API_PORT — check: docker compose logs api" >&2; exit 1; }
 
-existing_users=$(sql -N -e "SELECT COUNT(*) FROM \`$DB_NAME\`.users")
-if [[ "$existing_users" -gt 0 && "$FORCE" -ne 1 ]]; then
-    echo "$DB_NAME already has $existing_users users — looks seeded. Re-run with --force to wipe and re-seed." >&2
+# Checks clients, not users: the api's IdentityBootstrapSeeder has already created the bootstrap
+# super admin by now (and seed-user.sh may have added staff), so users is never empty here —
+# only the dump fills clients.
+existing_clients=$(sql -N -e "SELECT COUNT(*) FROM \`$DB_NAME\`.clients")
+if [[ "$existing_clients" -gt 0 && "$FORCE" -ne 1 ]]; then
+    echo "$DB_NAME already has $existing_clients clients — looks seeded. Re-run with --force to wipe and re-seed." >&2
     exit 1
 fi
 

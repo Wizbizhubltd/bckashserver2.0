@@ -34,6 +34,12 @@ public class OfficeService : IOfficeService
 
     public async Task<OfficeWriteResult> CreateAsync(Office office, CancellationToken cancellationToken = default)
     {
+        office.Name = office.Name?.Trim();
+        if (await NameTakenAsync(office.Name, null, cancellationToken))
+        {
+            return new OfficeWriteResult(OfficeWriteOutcome.DuplicateName);
+        }
+
         var locationFailure = await ValidateLocationAsync(office, cancellationToken);
         if (locationFailure is not null)
         {
@@ -63,13 +69,19 @@ public class OfficeService : IOfficeService
             return new OfficeWriteResult(OfficeWriteOutcome.CircularParent);
         }
 
+        var name = updated.Name?.Trim();
+        if (await NameTakenAsync(name, id, cancellationToken))
+        {
+            return new OfficeWriteResult(OfficeWriteOutcome.DuplicateName);
+        }
+
         var locationFailure = await ValidateLocationAsync(updated, cancellationToken);
         if (locationFailure is not null)
         {
             return new OfficeWriteResult(locationFailure.Value);
         }
 
-        office.Name = updated.Name;
+        office.Name = name;
         office.ParentId = updated.ParentId;
         office.ExternalId = updated.ExternalId;
         office.OpeningDate = updated.OpeningDate;
@@ -126,6 +138,60 @@ public class OfficeService : IOfficeService
         return new OfficeWriteResult(OfficeWriteOutcome.Success, office);
     }
 
+    /// <summary>
+    /// True if an office other than <paramref name="excludeId"/> already has <paramref name="name"/>.
+    /// Checked here rather than with a unique index because soft-deleted offices keep their names
+    /// and legacy data may already hold duplicates. Soft-deleted offices are excluded by the query filter.
+    /// </summary>
+    private async Task<bool> NameTakenAsync(string? name, int? excludeId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+
+        var lowered = name.ToLower();
+        return await _db.Offices.AnyAsync(
+            o => o.Id != excludeId && o.Name != null && o.Name.Trim().ToLower() == lowered,
+            cancellationToken);
+    }
+
+    public async Task<OfficeWriteResult> AssignManagerAsync(int id, int? managerId, CancellationToken cancellationToken = default)
+    {
+        var office = await _db.Offices.FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+        if (office is null)
+        {
+            return new OfficeWriteResult(OfficeWriteOutcome.NotFound);
+        }
+
+        if (managerId is { } userId && !await _db.Users.AnyAsync(u => u.Id == userId && !u.Blocked, cancellationToken))
+        {
+            return new OfficeWriteResult(OfficeWriteOutcome.InvalidManager);
+        }
+
+        if (office.ManagerId != managerId)
+        {
+            office.ManagerId = managerId;
+            office.UpdatedAt = DateTime.UtcNow;
+
+            // Shown in the office's Business operations activity — the manager is who signs off its funding.
+            var name = managerId is null
+                ? null
+                : await _db.Users.Where(u => u.Id == managerId).Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefaultAsync(cancellationToken);
+            _db.OfficeFundEvents.Add(new OfficeFundEvent
+            {
+                OfficeId = id,
+                Type = OfficeFundEventType.ManagerAssigned,
+                Comment = managerId is null ? "Manager removed" : name,
+                ActorId = _currentUser.UserId,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return new OfficeWriteResult(OfficeWriteOutcome.Success, office);
+    }
+
     /// <summary>True if walking <paramref name="proposedParentId"/>'s ancestor chain reaches <paramref name="officeId"/>.</summary>
     private async Task<bool> CreatesCycleAsync(int officeId, int proposedParentId, CancellationToken cancellationToken)
     {
@@ -159,9 +225,15 @@ public class OfficeService : IOfficeService
         return false;
     }
 
-    /// <summary>Null when the office's state/LGA/city/zone are all set and consistent with each other.</summary>
+    /// <summary>Null when the office's state/LGA/city/zone are all set and consistent with each other, and its manager (if any) is an active staff member.</summary>
     private async Task<OfficeWriteOutcome?> ValidateLocationAsync(Office office, CancellationToken cancellationToken)
     {
+        // The manager acknowledges or disputes the office's funding, so it must be someone who can sign in.
+        if (office.ManagerId is { } managerId && !await _db.Users.AnyAsync(u => u.Id == managerId && !u.Blocked, cancellationToken))
+        {
+            return OfficeWriteOutcome.InvalidManager;
+        }
+
         if (office.StateId is null || office.LgaId is null || office.CityId is null || office.ZoneId is null)
         {
             return OfficeWriteOutcome.LocationRequired;

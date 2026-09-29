@@ -82,7 +82,10 @@ public class ClientService : IClientService
         client.FullName = updated.FullName;
         client.IncorporationNumber = updated.IncorporationNumber;
         client.DisplayName = updated.DisplayName;
-        client.Picture = updated.Picture;
+
+        // Picture is deliberately not copied: the profile picture is the enrolled face capture
+        // (ClientBiometricsService) and only a new enrollment changes it — an edit of the client's
+        // details, which never carries it, must not wipe it.
         client.Mobile = updated.Mobile;
         client.Phone = updated.Phone;
         client.Email = updated.Email;
@@ -101,6 +104,8 @@ public class ClientService : IClientService
         client.Country = updated.Country;
         client.State = updated.State;
         client.City = updated.City;
+        client.BusinessAddress = updated.BusinessAddress;
+        client.Nationality = updated.Nationality;
 
         await _db.SaveChangesAsync(cancellationToken);
         return new ClientWriteResult(ClientWriteOutcome.Success, client);

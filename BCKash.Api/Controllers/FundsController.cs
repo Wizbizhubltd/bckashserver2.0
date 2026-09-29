@@ -24,7 +24,7 @@ public class FundsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<FundResponse>>> List(CancellationToken cancellationToken)
     {
-        var funds = await _db.Funds.ToListAsync(cancellationToken);
+        var funds = await _db.Funds.OrderByDescending(f => f.Id).ToListAsync(cancellationToken);
         return Ok(funds.Select(ToResponse).ToList());
     }
 

@@ -16,11 +16,13 @@ public class LoanProductService : ILoanProductService
 
     public async Task<LoanProductWriteResult> CreateAsync(LoanProduct product, CancellationToken cancellationToken = default)
     {
-        if (!IsValidRange(product))
+        var failure = await CheckAsync(product, null, cancellationToken);
+        if (failure is not null)
         {
-            return new LoanProductWriteResult(LoanProductWriteOutcome.InvalidRange);
+            return failure;
         }
 
+        product.Name = product.Name?.Trim();
         _db.LoanProducts.Add(product);
         await _db.SaveChangesAsync(cancellationToken);
         return new LoanProductWriteResult(LoanProductWriteOutcome.Success, product);
@@ -28,9 +30,10 @@ public class LoanProductService : ILoanProductService
 
     public async Task<LoanProductWriteResult> UpdateAsync(int id, LoanProduct updated, CancellationToken cancellationToken = default)
     {
-        if (!IsValidRange(updated))
+        var failure = await CheckAsync(updated, id, cancellationToken);
+        if (failure is not null)
         {
-            return new LoanProductWriteResult(LoanProductWriteOutcome.InvalidRange);
+            return failure;
         }
 
         var product = await _db.LoanProducts.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
@@ -39,7 +42,7 @@ public class LoanProductService : ILoanProductService
             return new LoanProductWriteResult(LoanProductWriteOutcome.NotFound);
         }
 
-        product.Name = updated.Name;
+        product.Name = updated.Name?.Trim();
         product.ShortName = updated.ShortName;
         product.Description = updated.Description;
         product.FundId = updated.FundId;
@@ -139,8 +142,16 @@ public class LoanProductService : ILoanProductService
         return new LoanProductWriteResult(LoanProductWriteOutcome.Success, product);
     }
 
-    private static bool IsValidRange(LoanProduct product) =>
-        LoanProductValidationRules.IsValidMinDefaultMax(product.MinimumPrincipal, product.DefaultPrincipal, product.MaximumPrincipal)
-        && LoanProductValidationRules.IsValidMinDefaultMax(product.MinimumLoanTerm, product.DefaultLoanTerm, product.MaximumLoanTerm)
-        && LoanProductValidationRules.IsValidMinDefaultMax(product.MinimumInterestRate, product.DefaultInterestRate, product.MaximumInterestRate);
+    private async Task<LoanProductWriteResult?> CheckAsync(LoanProduct product, int? excludeId, CancellationToken cancellationToken)
+    {
+        var error = LoanProductRules.Validate(product);
+        if (error is not null)
+        {
+            return new LoanProductWriteResult(LoanProductWriteOutcome.Invalid, Error: error);
+        }
+
+        var name = product.Name!.Trim().ToLower();
+        var taken = await _db.LoanProducts.AnyAsync(p => p.Id != excludeId && p.Name != null && p.Name.Trim().ToLower() == name, cancellationToken);
+        return taken ? new LoanProductWriteResult(LoanProductWriteOutcome.DuplicateName) : null;
+    }
 }

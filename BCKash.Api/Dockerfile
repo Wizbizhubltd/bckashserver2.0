@@ -24,11 +24,12 @@ COPY BCKash.Infrastructure/ BCKash.Infrastructure/
 COPY BCKash.SharedKernel/ BCKash.SharedKernel/
 
 # Same cache mount as the restore step above — packages restored under a cache mount live
-# only in that mount, not in the image layer, so a later RUN (even with --no-restore, which
-# still needs the already-restored package assets on disk to resolve analyzers/build tasks)
-# needs the mount too or it can't find them.
+# only in that mount, not in the image layer, so this RUN needs the mount too. No --no-restore:
+# Docker can reuse the restore *layer* after the cache mount itself has been cleared (e.g. by a
+# builder prune), and publish then fails with NETSDK1064 "package not found". Restoring again
+# here is a near-instant no-op when the packages are present and re-downloads them when not.
 RUN --mount=type=cache,target=/root/.nuget/packages \
-    dotnet publish BCKash.Api/BCKash.Api.csproj -c Release -o /app/publish --no-restore
+    dotnet publish BCKash.Api/BCKash.Api.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

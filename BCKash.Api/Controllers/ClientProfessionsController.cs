@@ -24,7 +24,7 @@ public class ClientProfessionsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<ClientProfessionResponse>>> List(CancellationToken cancellationToken)
     {
-        var items = await _db.ClientProfessions.ToListAsync(cancellationToken);
+        var items = await _db.ClientProfessions.OrderByDescending(p => p.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

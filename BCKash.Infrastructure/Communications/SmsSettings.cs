@@ -10,7 +10,7 @@ public class SmsSettings
 {
     public const string SectionName = "Sms";
 
-    /// <summary>The provider's send-SMS endpoint URL (e.g. Termii's `https://v3.api.termii.com/api/sms/send`).</summary>
+    /// <summary>The provider's send-SMS endpoint URL (e.g. Termii's `https://v4.api.termii.com/api/sms/send`).</summary>
     public string Provider { get; set; } = string.Empty;
 
     public string ApiKey { get; set; } = string.Empty;

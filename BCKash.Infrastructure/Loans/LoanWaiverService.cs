@@ -12,8 +12,11 @@ public class LoanWaiverService : ILoanWaiverService
     private readonly ICurrentUserContext _currentUser;
     private readonly ILoanGlPostingService _glPostingService;
 
-    public LoanWaiverService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanGlPostingService glPostingService)
+    private readonly ILoanCompletionService _completion;
+
+    public LoanWaiverService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanGlPostingService glPostingService, ILoanCompletionService completion)
     {
+        _completion = completion;
         _db = db;
         _currentUser = currentUser;
         _glPostingService = glPostingService;
@@ -83,6 +86,12 @@ public class LoanWaiverService : ILoanWaiverService
         if (loan is not null)
         {
             await _glPostingService.PostWaiverAsync(loan, transaction, component, amount, cancellationToken);
+        }
+
+        // Waiving what was left can settle the loan.
+        if (schedule.LoanId is { } loanId)
+        {
+            await _completion.CompleteIfSettledAsync(loanId, cancellationToken);
         }
 
         return new LoanWaiverResult(LoanWaiverOutcome.Success, schedule);

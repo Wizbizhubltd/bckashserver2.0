@@ -7,6 +7,9 @@ public enum ChargeProduct
     Savings,
     Shares,
     Client,
+
+    /// <summary>New (not in legacy data): fees charged to a lending group, e.g. registration or monthly dues.</summary>
+    Group,
 }
 
 /// <summary>Legacy values of `charges.charge_type`.</summary>
@@ -26,6 +29,15 @@ public enum ChargeType
     Activation,
     SharesPurchase,
     SharesRedeem,
+
+    /// <summary>New (not in legacy data): a penalty for paying a loan off before its schedule ends (early closure / prepayment).</summary>
+    EarlyRepayment,
+
+    /// <summary>
+    /// New (not in legacy data): the non-refundable fee for the membership/loan application form, charged
+    /// on every loan application. Seeded at ₦2,000; its amount is changed in Settings → Fees &amp; Payments.
+    /// </summary>
+    ApplicationFormFee,
 }
 
 /// <summary>Legacy values of `charges.charge_option`.</summary>

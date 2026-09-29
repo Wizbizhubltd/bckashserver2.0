@@ -68,6 +68,37 @@ public class Client : IHasTimestamps, ISoftDelete, IAuditable
     public string? State { get; set; }
     public string? City { get; set; }
 
+    /// <summary>Where the client trades — the paper loan form asks for it separately from their home (<see cref="Address"/>).</summary>
+    public string? BusinessAddress { get; set; }
+    public string? Nationality { get; set; }
+
+    // Onboarding (see ClientOnboardingRules): the BVN is checked against the verification provider,
+    // and a client kept on details that differ from what the BVN returned is flagged high risk until
+    // a super admin marks them safe. A high-risk client can't be approved.
+    public DateTime? BvnVerifiedAt { get; set; }
+
+    /// <summary>Whose details were kept at onboarding: <c>bvn</c> (the provider's) or <c>client</c> (as given).</summary>
+    public string? BvnDetailsSource { get; set; }
+    public bool IsHighRisk { get; set; }
+    public string? HighRiskReason { get; set; }
+    public int? HighRiskFlaggedById { get; set; }
+    public DateTime? HighRiskFlaggedAt { get; set; }
+    public int? HighRiskClearedById { get; set; }
+    public DateTime? HighRiskClearedAt { get; set; }
+    public string? HighRiskClearedNote { get; set; }
+
+    /// <summary>
+    /// When the client's face was enrolled — a liveness-checked capture (see <see cref="ClientBiometric"/>)
+    /// that also becomes their profile picture and is what loan face matches are compared against.
+    /// </summary>
+    public DateTime? BiometricEnrolledAt { get; set; }
+
+    /// <summary>
+    /// The granted <see cref="ClientEditRequest"/> currently unlocking an approved client's
+    /// documentation; cleared when the client is approved again.
+    /// </summary>
+    public int? EditPrivilegeRequestId { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public DateTime? DeletedAt { get; set; }

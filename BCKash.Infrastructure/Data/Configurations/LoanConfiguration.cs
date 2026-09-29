@@ -33,6 +33,7 @@ public class LoanConfiguration : IEntityTypeConfiguration<Loan>
         builder.Property(l => l.AccountNumber).HasColumnName("account_number").HasMaxLength(191);
         builder.Property(l => l.ExternalId).HasColumnName("external_id").HasMaxLength(191);
         builder.Property(l => l.LoanOfficerId).HasColumnName("loan_officer_id");
+        builder.HasIndex(l => l.LoanOfficerId);
 
         builder.Property(l => l.Principal).HasColumnName("principal").HasPrecision(65, 4);
         builder.Property(l => l.AppliedAmount).HasColumnName("applied_amount").HasPrecision(65, 4);
@@ -164,6 +165,18 @@ public class LoanConfiguration : IEntityTypeConfiguration<Loan>
         // New in Phase 5 — the legacy schema has no such columns; see Loan.cs.
         builder.Property(l => l.IsNpa).HasColumnName("is_npa").IsRequired();
         builder.Property(l => l.IncomeSuspended).HasColumnName("income_suspended").IsRequired();
+        builder.Property(l => l.SavingsRate).HasColumnName("savings_rate").HasPrecision(6, 4);
+
+        // New — how the loan is paid out, and for a bank transfer the account it goes to.
+        builder.Property(x => x.DisbursementMode)
+            .HasColumnName("disbursement_mode")
+            .HasConversion(
+                v => v == DisbursementMode.CashPickup ? "cash_pickup" : v == DisbursementMode.ChequePickup ? "cheque_pickup" : "bank_transfer",
+                v => v == "cash_pickup" ? DisbursementMode.CashPickup : v == "cheque_pickup" ? DisbursementMode.ChequePickup : DisbursementMode.BankTransfer)
+            .HasMaxLength(20);
+        builder.Property(x => x.DisbursementBankName).HasColumnName("disbursement_bank_name").HasMaxLength(100);
+        builder.Property(x => x.DisbursementAccountNumber).HasColumnName("disbursement_account_number").HasMaxLength(20);
+        builder.Property(x => x.DisbursementAccountName).HasColumnName("disbursement_account_name").HasMaxLength(150);
 
         builder.Property(l => l.CreatedAt).HasColumnName("created_at");
         builder.Property(l => l.UpdatedAt).HasColumnName("updated_at");

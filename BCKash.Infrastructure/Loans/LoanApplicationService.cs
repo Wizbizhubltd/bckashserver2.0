@@ -1,4 +1,5 @@
 using BCKash.Application.Loans;
+using BCKash.Application.Organization;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
@@ -14,14 +15,18 @@ public class LoanApplicationService : ILoanApplicationService
 
     private readonly BCKashDbContext _db;
     private readonly ICurrentUserContext _currentUser;
+    private readonly ILoanApplicationClientCodeService _clientCodes;
+    private readonly IOfficeFundService _officeFunds;
 
-    public LoanApplicationService(BCKashDbContext db, ICurrentUserContext currentUser)
+    public LoanApplicationService(BCKashDbContext db, ICurrentUserContext currentUser, ILoanApplicationClientCodeService clientCodes, IOfficeFundService officeFunds)
     {
+        _officeFunds = officeFunds;
         _db = db;
         _currentUser = currentUser;
+        _clientCodes = clientCodes;
     }
 
-    public async Task<LoanApplicationWriteResult> CreateAsync(LoanApplication application, CancellationToken cancellationToken = default)
+    public async Task<LoanApplicationWriteResult> CreateAsync(LoanApplication application, ClientCodeSubmission? clientCode = null, CancellationToken cancellationToken = default)
     {
         var product = await _db.LoanProducts.FirstOrDefaultAsync(p => p.Id == application.LoanProductId, cancellationToken);
         if (product is null)
@@ -35,11 +40,54 @@ public class LoanApplicationService : ILoanApplicationService
             return new LoanApplicationWriteResult(rangeCheck.Value);
         }
 
+        var check = await _clientCodes.CheckAsync(application, clientCode, cancellationToken);
+        switch (check.Outcome)
+        {
+            case ClientCodeCheckOutcome.Missing:
+                return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ClientCodeRequired);
+            case ClientCodeCheckOutcome.Mismatch:
+                return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ClientCodeMismatch);
+            case ClientCodeCheckOutcome.Expired:
+                return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ClientCodeExpired);
+            case ClientCodeCheckOutcome.Incorrect:
+                return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ClientCodeIncorrect, ClientCodeAttemptsLeft: check.AttemptsLeft);
+        }
+
         application.UserId = _currentUser.UserId;
         application.Status = ApprovalStatus.Pending;
 
+        // Every applicant pays the application form fee in force today.
+        if (await ApplicationFormFee.CurrentAsync(_db, cancellationToken) is { } formFee)
+        {
+            application.FormFee = formFee.Amount;
+            application.FormFeeChargeId = formFee.Id;
+        }
+
         _db.LoanApplications.Add(application);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        // The code is used up in the same save as the application: both happen, or neither does.
+        if (check.Code is not null)
+        {
+            check.Code.ConsumedAtUtc = DateTime.UtcNow;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException) when (check.Code is not null)
+        {
+            // Someone submitted the same code a moment earlier.
+            _db.ChangeTracker.Clear();
+            return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ClientCodeExpired);
+        }
+
+        if (check.Code is not null)
+        {
+            check.Code.LoanApplicationId = application.Id;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.Success, application);
     }
 
@@ -54,6 +102,17 @@ public class LoanApplicationService : ILoanApplicationService
         if (application.Status != ApprovalStatus.Pending)
         {
             return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.InvalidTransition);
+        }
+
+        // The client agreed to a specific loan by code — otherwise staff could raise a small loan
+        // with the client's confirmation and then edit it into a bigger one.
+        var termsChanged = updated.ClientType != application.ClientType
+            || updated.ClientId != application.ClientId
+            || updated.LoanProductId != application.LoanProductId
+            || updated.Amount != application.Amount;
+        if (termsChanged && await _db.LoanApplicationClientCodes.AnyAsync(c => c.LoanApplicationId == id, cancellationToken))
+        {
+            return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ClientConfirmedTermsLocked);
         }
 
         var product = await _db.LoanProducts.FirstOrDefaultAsync(p => p.Id == updated.LoanProductId, cancellationToken);
@@ -80,6 +139,15 @@ public class LoanApplicationService : ILoanApplicationService
         application.LoanTermType = updated.LoanTermType;
         application.Notes = updated.Notes;
 
+        // Older callers don't send the payout details; leave what's there rather than clearing it.
+        if (updated.DisbursementMode is not null)
+        {
+            application.DisbursementMode = updated.DisbursementMode;
+            application.DisbursementBankName = updated.DisbursementBankName;
+            application.DisbursementAccountNumber = updated.DisbursementAccountNumber;
+            application.DisbursementAccountName = updated.DisbursementAccountName;
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.Success, application);
     }
@@ -101,6 +169,13 @@ public class LoanApplicationService : ILoanApplicationService
         if (product is null)
         {
             return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.ProductNotFound);
+        }
+
+        // When loans draw on office funds, the office must be able to cover this after loans already approved.
+        var fundsProblem = await _officeFunds.CheckCanApproveAsync(application.OfficeId, approvedAmount, cancellationToken);
+        if (fundsProblem is not null)
+        {
+            return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.InsufficientOfficeFunds, Error: fundsProblem);
         }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -133,6 +208,10 @@ public class LoanApplicationService : ILoanApplicationService
                 InterestRateType = product.InterestRateType,
                 InterestMethod = product.InterestMethod,
                 AmortizationMethod = product.AmortizationMethod,
+                DisbursementMode = application.DisbursementMode,
+                DisbursementBankName = application.DisbursementBankName,
+                DisbursementAccountNumber = application.DisbursementAccountNumber,
+                DisbursementAccountName = application.DisbursementAccountName,
                 Status = LoanStatus.Pending,
                 ApprovedById = _currentUser.UserId,
                 ApprovedDate = today,
@@ -141,6 +220,7 @@ public class LoanApplicationService : ILoanApplicationService
                 CreatedDate = today,
             };
 
+            LoanCharge? formFeeCharge = null;
             try
             {
                 _db.Loans.Add(loan);
@@ -154,6 +234,21 @@ public class LoanApplicationService : ILoanApplicationService
                 application.ApprovedDate = today;
                 application.ApprovedNotes = notes;
 
+                // The form fee stays owed on the loan as a one-time upfront charge.
+                if (application.FormFee is > 0)
+                {
+                    _db.LoanCharges.Add(formFeeCharge = new LoanCharge
+                    {
+                        Loan = loan,
+                        ChargeId = application.FormFeeChargeId,
+                        ChargeType = LoanChargeType.Disbursement,
+                        ChargeOption = LoanChargeCalculationType.Flat,
+                        Amount = application.FormFee,
+                        AmountPaid = 0m,
+                        DueDate = today,
+                    });
+                }
+
                 await _db.SaveChangesAsync(cancellationToken);
 
                 return new LoanApplicationWriteResult(LoanApplicationWriteOutcome.Success, application);
@@ -161,6 +256,11 @@ public class LoanApplicationService : ILoanApplicationService
             catch (DbUpdateException)
             {
                 _db.Entry(loan).State = EntityState.Detached;
+                if (formFeeCharge is not null)
+                {
+                    _db.Entry(formFeeCharge).State = EntityState.Detached;
+                }
+
                 application.Loan = null;
                 application.LoanId = null;
                 application.Status = ApprovalStatus.Pending;

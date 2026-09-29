@@ -87,6 +87,8 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
         builder.Property(c => c.ClosedById).HasColumnName("closed_by_id");
         builder.Property(c => c.Notes).HasColumnName("notes");
         builder.Property(c => c.Occupation).HasColumnName("occupation").HasMaxLength(191);
+        builder.Property(c => c.BusinessAddress).HasColumnName("business_address");
+        builder.Property(c => c.Nationality).HasColumnName("nationality").HasMaxLength(100);
         builder.Property(c => c.PostalCode).HasColumnName("postal_code").HasMaxLength(191);
         builder.Property(c => c.Country).HasColumnName("country").HasMaxLength(191);
         builder.Property(c => c.State).HasColumnName("state").HasMaxLength(191);
@@ -94,6 +96,17 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
         builder.Property(c => c.CreatedAt).HasColumnName("created_at");
         builder.Property(c => c.UpdatedAt).HasColumnName("updated_at");
         builder.Property(c => c.DeletedAt).HasColumnName("deleted_at");
+        builder.Property(c => c.BvnVerifiedAt).HasColumnName("bvn_verified_at");
+        builder.Property(c => c.BvnDetailsSource).HasColumnName("bvn_details_source").HasMaxLength(10);
+        builder.Property(c => c.IsHighRisk).HasColumnName("is_high_risk");
+        builder.Property(c => c.HighRiskReason).HasColumnName("high_risk_reason");
+        builder.Property(c => c.HighRiskFlaggedById).HasColumnName("high_risk_flagged_by_id");
+        builder.Property(c => c.HighRiskFlaggedAt).HasColumnName("high_risk_flagged_at");
+        builder.Property(c => c.HighRiskClearedById).HasColumnName("high_risk_cleared_by_id");
+        builder.Property(c => c.HighRiskClearedAt).HasColumnName("high_risk_cleared_at");
+        builder.Property(c => c.HighRiskClearedNote).HasColumnName("high_risk_cleared_note");
+        builder.Property(c => c.BiometricEnrolledAt).HasColumnName("biometric_enrolled_at");
+        builder.Property(c => c.EditPrivilegeRequestId).HasColumnName("edit_privilege_request_id");
 
         builder.HasIndex(c => c.LegacyClientId);
 

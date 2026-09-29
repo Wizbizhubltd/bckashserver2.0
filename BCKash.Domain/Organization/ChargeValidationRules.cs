@@ -11,24 +11,27 @@ namespace BCKash.Domain.Organization;
 /// </summary>
 public static class ChargeValidationRules
 {
-    private static readonly Dictionary<ChargeType, ChargeProduct> ChargeTypeProduct = new()
+    private static readonly Dictionary<ChargeType, ChargeProduct[]> ChargeTypeProducts = new()
     {
-        [ChargeType.Disbursement] = ChargeProduct.Loan,
-        [ChargeType.DisbursementRepayment] = ChargeProduct.Loan,
-        [ChargeType.SpecifiedDueDate] = ChargeProduct.Loan,
-        [ChargeType.InstallmentFee] = ChargeProduct.Loan,
-        [ChargeType.OverdueInstallmentFee] = ChargeProduct.Loan,
-        [ChargeType.LoanReschedulingFee] = ChargeProduct.Loan,
-        [ChargeType.OverdueMaturity] = ChargeProduct.Loan,
-        [ChargeType.SavingsActivation] = ChargeProduct.Savings,
-        [ChargeType.WithdrawalFee] = ChargeProduct.Savings,
-        [ChargeType.AnnualFee] = ChargeProduct.Savings,
-        [ChargeType.MonthlyFee] = ChargeProduct.Savings,
-        [ChargeType.SharesPurchase] = ChargeProduct.Shares,
-        [ChargeType.SharesRedeem] = ChargeProduct.Shares,
+        [ChargeType.Disbursement] = [ChargeProduct.Loan],
+        [ChargeType.DisbursementRepayment] = [ChargeProduct.Loan],
+        [ChargeType.SpecifiedDueDate] = [ChargeProduct.Loan],
+        [ChargeType.InstallmentFee] = [ChargeProduct.Loan],
+        [ChargeType.OverdueInstallmentFee] = [ChargeProduct.Loan],
+        [ChargeType.LoanReschedulingFee] = [ChargeProduct.Loan],
+        [ChargeType.OverdueMaturity] = [ChargeProduct.Loan],
+        [ChargeType.EarlyRepayment] = [ChargeProduct.Loan],
+        [ChargeType.ApplicationFormFee] = [ChargeProduct.Loan],
+        [ChargeType.SavingsActivation] = [ChargeProduct.Savings],
+        [ChargeType.WithdrawalFee] = [ChargeProduct.Savings],
+        // Recurring dues: a savings maintenance fee, or a client's / group's membership fee.
+        [ChargeType.AnnualFee] = [ChargeProduct.Savings, ChargeProduct.Client, ChargeProduct.Group],
+        [ChargeType.MonthlyFee] = [ChargeProduct.Savings, ChargeProduct.Client, ChargeProduct.Group],
+        [ChargeType.SharesPurchase] = [ChargeProduct.Shares],
+        [ChargeType.SharesRedeem] = [ChargeProduct.Shares],
         // "activation" alone (as opposed to "savings_activation") reads as the generic
-        // client-onboarding charge — the one ChargeType without a product-specific prefix.
-        [ChargeType.Activation] = ChargeProduct.Client,
+        // onboarding charge — a client's or group's one-time registration fee.
+        [ChargeType.Activation] = [ChargeProduct.Client, ChargeProduct.Group],
     };
 
     // These ChargeOption values only make sense against a loan's repayment schedule
@@ -48,7 +51,7 @@ public static class ChargeValidationRules
     ];
 
     public static bool IsValidChargeTypeForProduct(ChargeType chargeType, ChargeProduct product) =>
-        ChargeTypeProduct.TryGetValue(chargeType, out var requiredProduct) && requiredProduct == product;
+        ChargeTypeProducts.TryGetValue(chargeType, out var products) && products.Contains(product);
 
     public static bool IsValidChargeOptionForProduct(ChargeOption chargeOption, ChargeProduct product) =>
         product == ChargeProduct.Loan || !LoanOnlyOptions.Contains(chargeOption);

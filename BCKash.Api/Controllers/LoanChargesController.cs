@@ -37,7 +37,7 @@ public class LoanChargesController : ControllerBase
             return NotFound();
         }
 
-        var items = await _db.LoanCharges.Where(c => c.LoanId == loanId).ToListAsync(cancellationToken);
+        var items = await _db.LoanCharges.Where(c => c.LoanId == loanId).OrderByDescending(c => c.Id).ToListAsync(cancellationToken);
         return Ok(items.Select(ToResponse).ToList());
     }
 

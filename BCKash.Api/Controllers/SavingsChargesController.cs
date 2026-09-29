@@ -27,7 +27,7 @@ public class SavingsChargesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<SavingsChargeResponse>>> List(int accountId, CancellationToken cancellationToken)
     {
-        var charges = await _db.SavingsCharges.Where(c => c.SavingsId == accountId).ToListAsync(cancellationToken);
+        var charges = await _db.SavingsCharges.Where(c => c.SavingsId == accountId).OrderByDescending(c => c.Id).ToListAsync(cancellationToken);
         return Ok(charges.Select(ToResponse).ToList());
     }
 
