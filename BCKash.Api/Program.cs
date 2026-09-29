@@ -121,7 +121,11 @@ var app = builder.Build();
 if (!app.Configuration.GetValue<bool>("Testing:UseSqlite"))
 {
     using var migrationScope = app.Services.CreateScope();
-    migrationScope.ServiceProvider.GetRequiredService<BCKashDbContext>().Database.Migrate();
+    var migrationDb = migrationScope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+    // Index builds on the multi-million-row loan tables outlast the 30s default command timeout
+    // on the test/production hosts; timing out there crashes startup and the container restart-loops.
+    migrationDb.Database.SetCommandTimeout(TimeSpan.FromMinutes(15));
+    migrationDb.Database.Migrate();
 }
 
 if (app.Environment.IsDevelopment())

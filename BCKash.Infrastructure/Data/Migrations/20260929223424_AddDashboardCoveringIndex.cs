@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -10,18 +10,19 @@ namespace BCKash.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateIndex(
-                name: "IX_loan_repayment_schedules_dashboard_covering",
-                table: "loan_repayment_schedules",
-                columns: new[] { "loan_id", "due_date", "principal", "principal_paid", "interest", "interest_paid" });
+            // IF NOT EXISTS, not CreateIndex: building this on millions of rows can outlast the
+            // client's command timeout, and MariaDB keeps building it after the client gives up —
+            // so a retried migration must tolerate the index already being there.
+            migrationBuilder.Sql(
+                "CREATE INDEX IF NOT EXISTS `IX_loan_repayment_schedules_dashboard_covering` " +
+                "ON `loan_repayment_schedules` (`loan_id`, `due_date`, `principal`, `principal_paid`, `interest`, `interest_paid`);");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_loan_repayment_schedules_dashboard_covering",
-                table: "loan_repayment_schedules");
+            migrationBuilder.Sql(
+                "DROP INDEX IF EXISTS `IX_loan_repayment_schedules_dashboard_covering` ON `loan_repayment_schedules`;");
         }
     }
 }
