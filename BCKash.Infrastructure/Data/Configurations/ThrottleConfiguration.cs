@@ -20,6 +20,12 @@ public class ThrottleConfiguration : IEntityTypeConfiguration<Throttle>
 
         builder.HasIndex(t => t.UserId).HasDatabaseName("throttle_user_id_index");
 
+        // The lockout check runs on every sign-in and password-reset request: recent rows of one
+        // type for this user OR this IP. One index per side lets MariaDB index-merge the OR
+        // instead of scanning the whole table.
+        builder.HasIndex(t => new { t.UserId, t.Type, t.CreatedAt }).HasDatabaseName("IX_throttle_user_id_type_created_at");
+        builder.HasIndex(t => new { t.Ip, t.Type, t.CreatedAt }).HasDatabaseName("IX_throttle_ip_type_created_at");
+
         builder.HasOne(t => t.User)
             .WithMany()
             .HasForeignKey(t => t.UserId)

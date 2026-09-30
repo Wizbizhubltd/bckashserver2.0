@@ -54,7 +54,7 @@ public class AuthService : IAuthService
 
     public async Task<LoginResult> LoginAsync(string email, string password, string? ip, string? portal = null, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(), cancellationToken);
+        var user = await FindByEmailAsync(email, cancellationToken);
 
         if (await _throttleService.IsLockedOutAsync(user?.Id, ip, cancellationToken))
         {
@@ -106,7 +106,7 @@ public class AuthService : IAuthService
         }
 
         var (userId, otpId) = claims.Value;
-        var otp = await _db.LoginOtps.FirstOrDefaultAsync(o => o.Id == otpId && o.UserId == userId, cancellationToken);
+        var otp = await _db.LoginOtps.Include(o => o.User).FirstOrDefaultAsync(o => o.Id == otpId && o.UserId == userId, cancellationToken);
         if (otp is null || otp.ConsumedAtUtc is not null || otp.ExpiresAtUtc <= DateTime.UtcNow)
         {
             return new OtpVerifyResult(OtpVerifyOutcomeType.InvalidChallenge);
@@ -124,17 +124,13 @@ public class AuthService : IAuthService
             return new OtpVerifyResult(OtpVerifyOutcomeType.InvalidCode);
         }
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        if (user is null)
-        {
-            return new OtpVerifyResult(OtpVerifyOutcomeType.InvalidChallenge);
-        }
-
+        // Consuming the code is saved together with the new session (one SaveChanges in IssueTokensAsync).
+        var user = otp.User;
         otp.ConsumedAtUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
 
-        var (accessToken, refreshToken) = await StartSessionAsync(user, deviceId, cancellationToken);
-        var userData = await BuildUserDataAsync(user, cancellationToken);
+        var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
+        var (accessToken, refreshToken) = await StartSessionAsync(user, userType, deviceId, cancellationToken);
+        var userData = BuildUserData(user, userType);
 
         return new OtpVerifyResult(OtpVerifyOutcomeType.Success, accessToken, refreshToken, userData);
     }
@@ -179,7 +175,7 @@ public class AuthService : IAuthService
 
     public async Task<PasswordResetRequestResult> RequestPasswordResetAsync(string email, string? ip, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.Trim().ToLower(), cancellationToken);
+        var user = await FindByEmailAsync(email, cancellationToken);
 
         if (await _throttleService.IsLockedOutAsync(user?.Id, ip, cancellationToken))
         {
@@ -299,7 +295,8 @@ public class AuthService : IAuthService
             return new TwoFactorResult(TwoFactorOutcomeType.InvalidCode);
         }
 
-        var (accessToken, refreshToken) = await StartSessionAsync(user, deviceId, cancellationToken);
+        var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
+        var (accessToken, refreshToken) = await StartSessionAsync(user, userType, deviceId, cancellationToken);
         return new TwoFactorResult(TwoFactorOutcomeType.Success, accessToken, refreshToken);
     }
 
@@ -327,7 +324,8 @@ public class AuthService : IAuthService
             return new RefreshResult(RefreshOutcomeType.InvalidOrExpired);
         }
 
-        var (accessToken, newRefreshToken) = await IssueTokensAsync(persistence.User, persistence.SessionId!, persistence.DeviceId, cancellationToken);
+        var userType = await GetUserTypeSlugAsync(persistence.User.Id, cancellationToken);
+        var (accessToken, newRefreshToken) = await IssueTokensAsync(persistence.User, userType, persistence.SessionId!, persistence.DeviceId, cancellationToken);
         return new RefreshResult(RefreshOutcomeType.Success, accessToken, newRefreshToken);
     }
 
@@ -363,10 +361,11 @@ public class AuthService : IAuthService
         var staleRefreshTokens = await _db.Persistences.Where(p => p.UserId == user.Id).ToListAsync(cancellationToken);
         _db.Persistences.RemoveRange(staleRefreshTokens);
 
+        var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
         var (accessToken, refreshToken) = user.ActiveSessionId is null
-            ? await StartSessionAsync(user, user.ActiveDeviceId, cancellationToken)
-            : await IssueTokensAsync(user, user.ActiveSessionId, user.ActiveDeviceId, cancellationToken);
-        var userData = await BuildUserDataAsync(user, cancellationToken);
+            ? await StartSessionAsync(user, userType, user.ActiveDeviceId, cancellationToken)
+            : await IssueTokensAsync(user, userType, user.ActiveSessionId, user.ActiveDeviceId, cancellationToken);
+        var userData = BuildUserData(user, userType);
 
         return new PasswordChangeResult(PasswordChangeOutcomeType.Success, accessToken, refreshToken, userData);
     }
@@ -376,7 +375,7 @@ public class AuthService : IAuthService
     /// other device's refresh tokens are revoked here, and their access tokens stop being accepted
     /// because their session id no longer matches (see <see cref="IActiveSessionChecker"/>).
     /// </summary>
-    private async Task<(AccessToken AccessToken, string RefreshToken)> StartSessionAsync(User user, string? deviceId, CancellationToken cancellationToken)
+    private async Task<(AccessToken AccessToken, string RefreshToken)> StartSessionAsync(User user, string? userType, string? deviceId, CancellationToken cancellationToken)
     {
         var otherSessions = await _db.Persistences.Where(p => p.UserId == user.Id).ToListAsync(cancellationToken);
         _db.Persistences.RemoveRange(otherSessions);
@@ -385,13 +384,12 @@ public class AuthService : IAuthService
         user.ActiveSessionId = sessionId;
         user.ActiveDeviceId = deviceId;
 
-        return await IssueTokensAsync(user, sessionId, deviceId, cancellationToken);
+        return await IssueTokensAsync(user, userType, sessionId, deviceId, cancellationToken);
     }
 
-    private async Task<(AccessToken AccessToken, string RefreshToken)> IssueTokensAsync(User user, string sessionId, string? deviceId, CancellationToken cancellationToken)
+    private async Task<(AccessToken AccessToken, string RefreshToken)> IssueTokensAsync(User user, string? userType, string sessionId, string? deviceId, CancellationToken cancellationToken)
     {
         var permissionSlugs = await _permissionService.GetEffectivePermissionSlugsAsync(user.Id, cancellationToken);
-        var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
         var accessToken = _jwtTokenService.GenerateAccessToken(user, permissionSlugs, userType, sessionId);
 
         var rawRefreshToken = GenerateRefreshTokenValue();
@@ -434,14 +432,22 @@ public class AuthService : IAuthService
         return _jwtTokenService.GenerateLoginOtpChallengeToken(user.Id, otp.Id);
     }
 
-    private async Task<UserLoginData> BuildUserDataAsync(User user, CancellationToken cancellationToken) => new(
+    private static UserLoginData BuildUserData(User user, string? userType) => new(
         user.Id.ToString(),
         $"{user.FirstName} {user.LastName}".Trim(),
         user.Email,
         user.Phone,
         user.UserClass?.ToString(),
-        await GetUserTypeSlugAsync(user.Id, cancellationToken),
+        userType,
         user.MustChangePassword);
+
+    // No LOWER() here: that would stop MariaDB using users_email_unique and scan every user on each
+    // sign-in. The email column's collation (utf8mb4_uca1400_ai_ci) already compares case-insensitively.
+    private Task<User?> FindByEmailAsync(string email, CancellationToken cancellationToken)
+    {
+        var normalized = email.Trim();
+        return _db.Users.FirstOrDefaultAsync(u => u.Email == normalized, cancellationToken);
+    }
 
     private Task SendOtpAsync(User user, string subject, string message, CancellationToken cancellationToken) =>
         _otpDispatcher.DispatchAsync(new OtpMessage(user.Email, user.Phone, subject, message), cancellationToken);

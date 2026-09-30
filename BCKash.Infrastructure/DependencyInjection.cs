@@ -44,6 +44,13 @@ namespace BCKash.Infrastructure;
 
 public static class InfrastructureServiceCollectionExtensions
 {
+    // Kept out of the EF second-level cache. These are written on nearly every sign-in (or, for
+    // audit_trail, on every SaveChanges), and their reads are keyed on per-request values
+    // (timestamps, OTP/token ids), so a cached result is almost never reused. Caching them only
+    // added Redis writes on every read plus an invalidation on every write, all on the sign-in
+    // path. Security state like lockouts and OTPs must also be read fresh anyway.
+    private static readonly string[] UncachedTables = ["throttle", "login_otps", "persistences", "audit_trail"];
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
@@ -141,7 +148,7 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddDistributedMemoryCache();
             services.AddEFSecondLevelCache(options =>
                 options.UseMemoryCacheProvider()
-                       .CacheAllQueries(CacheExpirationMode.Absolute, TimeSpan.FromMinutes(5)));
+                       .CacheAllQueriesExceptContainingTableNames(CacheExpirationMode.Absolute, TimeSpan.FromMinutes(5), UncachedTables));
         }
         else
         {
@@ -169,7 +176,7 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddEFSecondLevelCache(options =>
                 options.UseStackExchangeRedisCacheProvider(
                         ConfigurationOptions.Parse(redisConnectionString), TimeSpan.FromMinutes(5))
-                       .CacheAllQueries(CacheExpirationMode.Absolute, TimeSpan.FromMinutes(5))
+                       .CacheAllQueriesExceptContainingTableNames(CacheExpirationMode.Absolute, TimeSpan.FromMinutes(5), UncachedTables)
                        .UseCacheKeyPrefix("EF_")
                        .UseDbCallsIfCachingProviderIsDown(TimeSpan.FromMinutes(1)));
         }
