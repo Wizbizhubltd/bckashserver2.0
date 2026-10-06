@@ -2,6 +2,7 @@ using BCKash.Application.Reporting;
 using BCKash.Domain.Loans;
 using BCKash.Domain.Reporting;
 using BCKash.Infrastructure.Data;
+using EFCoreSecondLevelCacheInterceptor;
 using Microsoft.EntityFrameworkCore;
 
 namespace BCKash.Infrastructure.Reporting;
@@ -12,6 +13,9 @@ namespace BCKash.Infrastructure.Reporting;
 /// arrears" reuses the same definition as LoanNpaService: today minus the oldest unpaid
 /// schedule row's due date. Column sets are a documented modeling choice (no per-report spec
 /// exists in the FRD) — see docs/phase9-communications-reporting-spec.md.
+/// The filtered loans stay a SQL subquery (never a list of ids pulled into memory and sent back as
+/// a huge IN (...)), and the reports that return one row per instalment/transaction skip the Redis
+/// second-level cache, which would otherwise buffer and store the whole result.
 /// </summary>
 public class LoanReportService : ILoanReportService
 {
@@ -111,7 +115,7 @@ public class LoanReportService : ILoanReportService
     /// <summary>Outstanding principal = scheduled principal minus paid/waived/written-off, summed per product, for currently-disbursed loans.</summary>
     private async Task<ReportResult> LoanPortfolioAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
-        var loanIds = await FilteredLoans(filter).Where(l => l.Status == LoanStatus.Disbursed).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Where(l => l.Status == LoanStatus.Disbursed).Select(l => l.Id);
 
         var byProduct = await _db.Loans
             .Where(l => loanIds.Contains(l.Id))
@@ -134,9 +138,9 @@ public class LoanReportService : ILoanReportService
 
     private async Task<ReportResult> ExpectedRepaymentsAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
-        var loanIds = await FilteredLoans(filter).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Select(l => l.Id);
 
-        var query = _db.LoanRepaymentSchedules.Where(s => loanIds.Contains(s.LoanId ?? 0) && !s.Paid);
+        var query = _db.LoanRepaymentSchedules.NotCacheable().Where(s => loanIds.Contains(s.LoanId ?? 0) && !s.Paid);
 
         if (filter.FromDate.HasValue)
         {
@@ -168,9 +172,9 @@ public class LoanReportService : ILoanReportService
 
     private async Task<ReportResult> RepaymentsAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
-        var loanIds = await FilteredLoans(filter).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Select(l => l.Id);
 
-        var query = _db.LoanTransactions.Where(t => loanIds.Contains(t.LoanId ?? 0) && t.TransactionType == LoanTransactionType.Repayment && !t.Reversed);
+        var query = _db.LoanTransactions.NotCacheable().Where(t => loanIds.Contains(t.LoanId ?? 0) && t.TransactionType == LoanTransactionType.Repayment && !t.Reversed);
 
         if (filter.FromDate.HasValue)
         {
@@ -208,7 +212,7 @@ public class LoanReportService : ILoanReportService
     /// <summary>Expected (scheduled due) vs. collected (actual repayment transactions) within the period, per office.</summary>
     private async Task<ReportResult> CollectionAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
-        var loanIds = await FilteredLoans(filter).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Select(l => l.Id);
 
         var expectedQuery = _db.LoanRepaymentSchedules.Where(s => loanIds.Contains(s.LoanId ?? 0));
         if (filter.FromDate.HasValue)
@@ -245,7 +249,7 @@ public class LoanReportService : ILoanReportService
 
     private async Task<ReportResult> ArrearsAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
-        var loanIds = await FilteredLoans(filter).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Select(l => l.Id);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var overdue = await _db.LoanRepaymentSchedules
@@ -305,7 +309,7 @@ public class LoanReportService : ILoanReportService
     private async Task<ReportResult> IndividualIndicatorAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var loanIds = await FilteredLoans(filter).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Select(l => l.Id);
 
         var overdueByLoan = await _db.LoanRepaymentSchedules
             .Where(s => loanIds.Contains(s.LoanId ?? 0) && !s.Paid && s.DueDate < today)
@@ -341,7 +345,7 @@ public class LoanReportService : ILoanReportService
     /// <summary>Per loan officer: active loan count, total disbursed, total outstanding, and portfolio-at-risk % (NPA loans / active loans).</summary>
     private async Task<ReportResult> LoanOfficerPerformanceAsync(ReportFilter filter, CancellationToken cancellationToken)
     {
-        var loanIds = await FilteredLoans(filter).Select(l => l.Id).ToListAsync(cancellationToken);
+        var loanIds = FilteredLoans(filter).Select(l => l.Id);
 
         var perOfficer = await _db.Loans
             .Where(l => loanIds.Contains(l.Id))
