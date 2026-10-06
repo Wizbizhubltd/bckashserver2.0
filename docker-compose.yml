@@ -1,3 +1,11 @@
+# Shared log limits: each container keeps at most 3 x 50MB of logs, so a noisy service can never
+# fill the disk again (the API once wrote a 45GB log in under a week).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   db:
     # MariaDB, matching production (MariaDB 11.4).
@@ -17,6 +25,7 @@ services:
       - "${DB_EXTERNAL_PORT:-3307}:3306"
     volumes:
       - bckash-mariadb-data:/var/lib/mysql
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -35,6 +44,7 @@ services:
               "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       - "${REDIS_EXTERNAL_PORT:-6380}:6379"
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 5s
@@ -49,11 +59,17 @@ services:
     env_file:
       - .env
     environment:
+      # Keep app logs at Information, but silence framework noise. EF Core at Information logs
+      # the full SQL of every query, which is what filled the disk.
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
       # Overrides the .env values to reach MariaDB/Redis over the docker network (service names
       # `db`/`redis`, their internal ports) instead of the host-mapped ports .env uses for
       # `dotnet run` outside docker.
       ConnectionStrings__BCKashDb: "Server=db;Port=3306;Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
       ConnectionStrings__Redis: "redis:6379,password=${REDIS_PASSWORD}"
+    logging: *default-logging
     ports:
       # Loopback only: on the server nginx proxies to 127.0.0.1:4000, and the API shouldn't be
       # reachable from outside except through it. Keep API_PORT a bare port number — the seed
