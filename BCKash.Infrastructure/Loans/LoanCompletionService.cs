@@ -2,6 +2,7 @@ using BCKash.Application.Loans;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
+using EFCoreSecondLevelCacheInterceptor;
 using Microsoft.EntityFrameworkCore;
 
 namespace BCKash.Infrastructure.Loans;
@@ -14,6 +15,9 @@ public class LoanCompletionService : ILoanCompletionService
 
     // Loans being repaid. A List so EF can translate Contains.
     private static readonly List<LoanStatus> BeingRepaid = [LoanStatus.Disbursed, LoanStatus.Rescheduled];
+
+    // The sweep checks loans this many at a time, so memory stays at one batch rather than every active loan.
+    private const int SweepBatchSize = 500;
 
     private readonly BCKashDbContext _db;
     private readonly ICurrentUserContext _currentUser;
@@ -72,17 +76,35 @@ public class LoanCompletionService : ILoanCompletionService
     public async Task<int> SweepAsync(CancellationToken cancellationToken = default)
     {
         var candidates = await _db.Loans
+            .NotCacheable()
             .Where(l => BeingRepaid.Contains(l.Status) && l.DeletedAt == null && _db.LoanRepaymentSchedules.Any(s => s.LoanId == l.Id))
             .Select(l => l.Id)
             .ToListAsync(cancellationToken);
 
         var closed = 0;
-        foreach (var loanId in candidates)
+        foreach (var batch in candidates.Chunk(SweepBatchSize))
         {
-            if (await CompleteIfSettledAsync(loanId, cancellationToken))
+            // Untracked and past the second-level cache: almost every loan still owes, so only the
+            // settled ones are loaded again (tracked) by CompleteIfSettledAsync to be closed.
+            var settled = (await _db.LoanRepaymentSchedules
+                    .AsNoTracking()
+                    .NotCacheable()
+                    .Where(s => s.LoanId.HasValue && batch.Contains(s.LoanId.Value))
+                    .ToListAsync(cancellationToken))
+                .GroupBy(s => s.LoanId!.Value)
+                .Where(g => g.Sum(Owed) <= 0)
+                .Select(g => g.Key)
+                .ToList();
+
+            foreach (var loanId in settled)
             {
-                closed++;
+                if (await CompleteIfSettledAsync(loanId, cancellationToken))
+                {
+                    closed++;
+                }
             }
+
+            _db.ChangeTracker.Clear();
         }
 
         return closed;

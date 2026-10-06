@@ -7,6 +7,7 @@ using BCKash.Application.Organization;
 using BCKash.Domain.Clients;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
+using EFCoreSecondLevelCacheInterceptor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -97,23 +98,31 @@ public partial class LoanNotificationService : ILoanNotificationService
     }
 
     /// <summary>Instalments due between <paramref name="from"/> and <paramref name="to"/> with money still owed, not yet reminded about.</summary>
+    /// <remarks>
+    /// The reminder runs read untracked and skip the Redis second-level cache (NotCacheable), and
+    /// empty the change tracker after each message, so a run over thousands of loans holds one
+    /// loan's rows at a time instead of all of them.
+    /// </remarks>
     private async Task<int> RemindInstalmentsAsync(LoanNotificationKind kind, string logKind, DateOnly from, DateOnly to, CancellationToken cancellationToken)
     {
         var reminded = _db.LoanNotifications.Where(n => n.Kind == logKind && n.ScheduleId != null).Select(n => n.ScheduleId!.Value);
         var instalments = await _db.LoanRepaymentSchedules
+            .AsNoTracking()
+            .NotCacheable()
             .Where(s => s.DueDate >= from && s.DueDate <= to && s.LoanId != null && ActiveStatuses.Contains(s.Loan!.Status) && !reminded.Contains(s.Id))
             .ToListAsync(cancellationToken);
 
         var sent = 0;
         foreach (var instalment in instalments.Where(s => Outstanding(s) > 0))
         {
-            var loan = await _db.Loans.FirstAsync(l => l.Id == instalment.LoanId, cancellationToken);
+            var loan = await _db.Loans.AsNoTracking().NotCacheable().FirstAsync(l => l.Id == instalment.LoanId, cancellationToken);
             // What the client pays — grossed up on a savings loan, so the instalment is still covered after their savings share.
             var values = await ValuesAsync(loan, (ClientSavingsRules.GrossUp(Outstanding(instalment), loan.SavingsRate), instalment.DueDate!.Value), cancellationToken);
             await SafelyAsync(kind, loan.Id, () => Task.FromResult<MessageData?>(values), cancellationToken);
 
             _db.LoanNotifications.Add(new LoanNotification { LoanId = loan.Id, ScheduleId = instalment.Id, Kind = logKind, CreatedAt = DateTime.UtcNow });
             await _db.SaveChangesAsync(cancellationToken);
+            _db.ChangeTracker.Clear();
             sent++;
         }
 
@@ -126,6 +135,7 @@ public partial class LoanNotificationService : ILoanNotificationService
         var earliest = lastOverdue.AddDays(-LoanNotificationKeys.CatchUpDays + 1);
         var told = _db.LoanNotifications.Where(n => n.Kind == LoanNotification.LoanOverdueKind).Select(n => n.LoanId);
         var loanIds = await _db.LoanRepaymentSchedules
+            .NotCacheable()
             .Where(s => s.LoanId != null && ActiveStatuses.Contains(s.Loan!.Status))
             .GroupBy(s => s.LoanId!.Value)
             .Select(g => new { LoanId = g.Key, Maturity = g.Max(s => s.DueDate) })
@@ -136,7 +146,7 @@ public partial class LoanNotificationService : ILoanNotificationService
         var sent = 0;
         foreach (var loanId in loanIds)
         {
-            var loan = await _db.Loans.FirstAsync(l => l.Id == loanId, cancellationToken);
+            var loan = await _db.Loans.AsNoTracking().NotCacheable().FirstAsync(l => l.Id == loanId, cancellationToken);
             var values = await ValuesAsync(loan, null, cancellationToken);
             if (values.Balance <= 0)
             {
@@ -146,6 +156,7 @@ public partial class LoanNotificationService : ILoanNotificationService
             await SafelyAsync(LoanNotificationKind.LoanOverdue, loanId, () => Task.FromResult<MessageData?>(values), cancellationToken);
             _db.LoanNotifications.Add(new LoanNotification { LoanId = loanId, Kind = LoanNotification.LoanOverdueKind, CreatedAt = DateTime.UtcNow });
             await _db.SaveChangesAsync(cancellationToken);
+            _db.ChangeTracker.Clear();
             sent++;
         }
 
@@ -213,7 +224,8 @@ public partial class LoanNotificationService : ILoanNotificationService
             (name, phone, email) = (group?.Name, group?.Mobile ?? group?.Phone, group?.Email);
         }
 
-        var schedule = await _db.LoanRepaymentSchedules.Where(s => s.LoanId == loan.Id).OrderBy(s => s.DueDate).ThenBy(s => s.Installment).ToListAsync(cancellationToken);
+        // Read-only, and every caller has already saved — untracked and uncached, since the schedule changes with every repayment.
+        var schedule = await _db.LoanRepaymentSchedules.AsNoTracking().NotCacheable().Where(s => s.LoanId == loan.Id).OrderBy(s => s.DueDate).ThenBy(s => s.Installment).ToListAsync(cancellationToken);
         var balance = schedule.Count > 0 ? schedule.Sum(Outstanding) : loan.ApprovedAmount ?? loan.AppliedAmount ?? 0;
         var first = schedule.FirstOrDefault();
         var approved = loan.ApprovedAmount ?? loan.AppliedAmount ?? 0;

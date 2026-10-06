@@ -93,7 +93,8 @@ public class GlReportService : IGlReportService
             loansQuery = loansQuery.Where(l => l.OfficeId == officeId);
         }
 
-        var loanIds = await loansQuery.Select(l => l.Id).ToListAsync(cancellationToken);
+        // A subquery, not a list of every disbursed loan's id sent back as a huge IN (...).
+        var loanIds = loansQuery.Select(l => l.Id);
 
         var perLoan = await _db.LoanRepaymentSchedules
             .Where(s => loanIds.Contains(s.LoanId ?? 0))

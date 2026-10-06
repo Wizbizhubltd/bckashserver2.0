@@ -52,6 +52,7 @@ services:
       retries: 20
 
   api:
+    mem_limit: 2g
     build:
       context: .
       dockerfile: BCKash.Api/Dockerfile

@@ -2,6 +2,7 @@ using BCKash.Application.Loans;
 using BCKash.Domain.Loans;
 using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
+using EFCoreSecondLevelCacheInterceptor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -23,7 +24,10 @@ namespace BCKash.Infrastructure.Loans;
 /// </summary>
 public class LoanPenaltyService : ILoanPenaltyService
 {
-    // Loans are processed and saved in batches so one bad loan can't sink the whole run.
+    // Loans are processed and saved in batches so one bad loan can't sink the whole run, and the
+    // change tracker is emptied after each one so memory stays at one batch, not the whole loan book.
+    // The bulk reads skip the Redis second-level cache (NotCacheable): it would buffer every row a
+    // second time and push the whole result to Redis, for a query that runs once a day.
     private const int BatchSize = 200;
 
     private readonly BCKashDbContext _db;
@@ -66,6 +70,7 @@ public class LoanPenaltyService : ILoanPenaltyService
 
         // Disbursed loans with something overdue at all — the per-penalty grace is applied below.
         var candidateLoanIds = await _db.LoanRepaymentSchedules
+            .NotCacheable()
             .Where(s => s.DueDate < today
                      && ((s.Principal ?? 0) > (s.PrincipalPaid ?? 0) || (s.Interest ?? 0) > (s.InterestPaid ?? 0))
                      && s.Loan!.Status == LoanStatus.Disbursed)
@@ -89,6 +94,9 @@ public class LoanPenaltyService : ILoanPenaltyService
                 // Most likely another run charged the same occurrence first (unique index) — the next
                 // run picks up whatever this batch didn't write.
                 _logger.LogWarning(ex, "Penalty batch starting at loan {LoanId} was not saved.", batch[0]);
+            }
+            finally
+            {
                 _db.ChangeTracker.Clear();
             }
         }
@@ -100,12 +108,15 @@ public class LoanPenaltyService : ILoanPenaltyService
     private async Task<(int Loans, int Count, decimal Amount)> ChargeBatchAsync(
         int[] loanIds, List<Charge> penalties, Dictionary<int, HashSet<int>> productPenalties, OverdueRules rules, DateOnly today, CancellationToken cancellationToken)
     {
-        var loans = await _db.Loans.Where(l => loanIds.Contains(l.Id)).ToListAsync(cancellationToken);
-        var schedules = (await _db.LoanRepaymentSchedules.Where(s => s.LoanId.HasValue && loanIds.Contains(s.LoanId.Value)).ToListAsync(cancellationToken))
+        var loans = await _db.Loans.AsNoTracking().NotCacheable().Where(l => loanIds.Contains(l.Id)).ToListAsync(cancellationToken);
+        // Tracked: the penalties are written onto these instalments.
+        var schedules = (await _db.LoanRepaymentSchedules.NotCacheable().Where(s => s.LoanId.HasValue && loanIds.Contains(s.LoanId.Value)).ToListAsync(cancellationToken))
             .GroupBy(s => s.LoanId!.Value)
             .ToDictionary(g => g.Key, g => g.OrderBy(s => s.DueDate).ToList());
-        var history = (await _db.LoanPenaltyApplications.Where(a => loanIds.Contains(a.LoanId)).ToListAsync(cancellationToken))
-            .ToLookup(a => (a.LoanId, a.ChargeId, a.ScheduleId));
+        var applied = await _db.LoanPenaltyApplications.AsNoTracking().NotCacheable().Where(a => loanIds.Contains(a.LoanId)).ToListAsync(cancellationToken);
+        var history = applied.ToLookup(a => (a.LoanId, a.ChargeId, a.ScheduleId));
+        // What each penalty has charged on each loan so far, kept up to date as this batch charges more.
+        var chargedSoFar = applied.GroupBy(a => (a.LoanId, a.ChargeId)).ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
 
         var pending = new List<(LoanPenaltyApplication Record, LoanCharge Charge, LoanTransaction Transaction)>();
         var chargedLoans = new HashSet<int>();
@@ -197,10 +208,9 @@ public class LoanPenaltyService : ILoanPenaltyService
 
         void Charge(Loan loan, Charge penalty, PenaltyRule rule, LoanRepaymentSchedule target, int scheduleId, DateOnly triggerDate, decimal baseAmount, decimal disbursed)
         {
-            var previous = history[(loan.Id, penalty.Id, scheduleId)].ToList();
+            var previous = history[(loan.Id, penalty.Id, scheduleId)];
             // The cap covers everything this penalty has charged on the loan, across instalments.
-            var chargedOnLoan = history.Where(g => g.Key.LoanId == loan.Id && g.Key.ChargeId == penalty.Id).SelectMany(g => g).Sum(a => a.Amount)
-                + pending.Where(p => p.Record.LoanId == loan.Id && p.Record.ChargeId == penalty.Id).Sum(p => p.Record.Amount);
+            var chargedOnLoan = chargedSoFar.GetValueOrDefault((loan.Id, penalty.Id));
 
             var due = LoanPenaltyCalculator.Due(rule, triggerDate, today, previous.Select(a => a.Occurrence).ToHashSet(), chargedOnLoan, baseAmount, disbursed);
             foreach (var occurrence in due)
@@ -258,6 +268,7 @@ public class LoanPenaltyService : ILoanPenaltyService
                 _db.LoanPenaltyApplications.Add(record);
                 pending.Add((record, loanCharge, transaction));
                 chargedLoans.Add(loan.Id);
+                chargedSoFar[(loan.Id, penalty.Id)] = chargedSoFar.GetValueOrDefault((loan.Id, penalty.Id)) + occurrence.Amount;
             }
         }
     }
