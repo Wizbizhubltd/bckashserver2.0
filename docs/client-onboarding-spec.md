@@ -19,6 +19,7 @@
 ## Onboarding
 
 1. **BVN check** — `POST /onboarding/bvn-check {bvn, fullName, phone}` looks the BVN up through the BC Kash MFB core gateway (`POST /identity/get_bvn`, verified only when `isBvnValid` is true) and stores the result as a `BvnVerification`. It compares first/last (and middle, when both have one) names and phone with what was typed. Names compare case- and space-insensitively; phones on their last 10 digits.
+   The gateway session is reused for at most 10 minutes. The gateway answers an expired session with 400 / "System Error!" rather than 401, so a failed lookup on a reused session logs in again and retries once. A 400 (or "System Error" / "invalid" / "not found" message) on a fresh session means the BVN belongs to no one → 404 "This BVN is invalid"; login refusals, timeouts and 5xx stay 503.
 2. **Onboard** — `POST /onboarding/clients` (one) or `POST /onboarding/groups` (a group plus at least 3 clients). Each client refers to their verification by id, so saved details always come from the server's own lookup. When the lookup didn't match, the request must say `detailsSource`:
    - `bvn` — save the BVN record's name and phone.
    - `client` — keep what was typed. Needs `overrideReason`, and the client is flagged **high risk** until a super admin marks them safe.

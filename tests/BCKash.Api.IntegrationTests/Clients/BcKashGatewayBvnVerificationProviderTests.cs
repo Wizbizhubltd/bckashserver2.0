@@ -97,13 +97,71 @@ public class BcKashGatewayBvnVerificationProviderTests
         Assert.Equal("Insufficient balance", result.Error);
     }
 
+    [Fact]
+    public async Task An_expired_session_answered_with_400_is_replaced_by_logging_in_again()
+    {
+        var logins = 0;
+        var firstSessionQueries = 0;
+        var handler = new StubHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/initialisation/init")
+            {
+                logins++;
+                return Json(LoginJson);
+            }
+
+            // The first session works once, then expires — and the gateway says so with a 400, not a 401.
+            return logins == 1 && ++firstSessionQueries > 1
+                ? Json(SystemErrorJson, HttpStatusCode.BadRequest)
+                : Json(ValidBvnJson);
+        });
+        var provider = Provider(handler);
+
+        Assert.Equal(BvnLookupOutcome.Found, (await provider.LookupAsync("21111111111", "Muideen", null, "Oladipupo", null)).Outcome);
+        Assert.Equal(BvnLookupOutcome.Found, (await provider.LookupAsync("21111111111", "Muideen", null, "Oladipupo", null)).Outcome);
+        Assert.Equal(2, logins);
+    }
+
+    [Fact]
+    public async Task A_bvn_the_gateway_rejects_on_a_fresh_session_is_not_found_rather_than_unavailable()
+    {
+        var rejected400 = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
+            ? Json(LoginJson)
+            : Json(SystemErrorJson, HttpStatusCode.BadRequest));
+        Assert.Equal(BvnLookupOutcome.NotFound, (await Provider(rejected400).LookupAsync("12345678901", "Ada", null, "Obi", null)).Outcome);
+        Assert.Single(rejected400.Requests, r => r.Path == "/v1/identity/get_bvn");
+
+        var systemError = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
+            ? Json(LoginJson)
+            : Json(SystemErrorJson));
+        Assert.Equal(BvnLookupOutcome.NotFound, (await Provider(systemError).LookupAsync("12345678901", "Ada", null, "Obi", null)).Outcome);
+
+        var emptyBody400 = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
+            ? Json(LoginJson)
+            : new HttpResponseMessage(HttpStatusCode.BadRequest));
+        Assert.Equal(BvnLookupOutcome.NotFound, (await Provider(emptyBody400).LookupAsync("12345678901", "Ada", null, "Obi", null)).Outcome);
+    }
+
+    [Fact]
+    public async Task A_gateway_outage_stays_unavailable()
+    {
+        var outage = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
+            ? Json(LoginJson)
+            : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        Assert.Equal(BvnLookupOutcome.Unavailable, (await Provider(outage).LookupAsync("21111111111", "Ada", null, "Obi", null)).Outcome);
+    }
+
+    private const string SystemErrorJson = """
+        {"RequestStatus": false, "ResponseMessage": "System Error! Contact your system administrator", "isBvnValid": false}
+        """;
+
     // A fresh account per provider, so the login cached for one test is never reused by another.
     private static BcKashGatewayBvnVerificationProvider Provider(StubHandler handler) => new(
         new HttpClient(handler),
         Options.Create(new BvnGatewaySettings { BaseUrl = "https://gateway.test/v1", Email = $"{Guid.NewGuid():N}@bckash.test", Password = "secret" }),
         NullLogger<BcKashGatewayBvnVerificationProvider>.Instance);
 
-    private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK) => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     private sealed record RecordedRequest(HttpMethod Method, string Path, Dictionary<string, string> Headers, string Body);
 
