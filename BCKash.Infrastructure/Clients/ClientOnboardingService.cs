@@ -81,7 +81,7 @@ public class ClientOnboardingService : IClientOnboardingService
 
         if (!verification.Found)
         {
-            return new BvnCheckResult(BvnCheckOutcome.NotFound, verification.Id, Error: "No one is registered with this BVN.");
+            return new BvnCheckResult(BvnCheckOutcome.NotFound, verification.Id, Error: "This BVN is invalid — it doesn't belong to anyone. Check the number and try again.");
         }
 
         var comparisons = Compare(verification, firstName, middleName, lastName, phone);
@@ -251,7 +251,7 @@ public class ClientOnboardingService : IClientOnboardingService
 
             if (!verification.Found)
             {
-                errors[key] = "No one is registered with this BVN.";
+                errors[key] = "This BVN is invalid — it doesn't belong to anyone.";
                 continue;
             }
 

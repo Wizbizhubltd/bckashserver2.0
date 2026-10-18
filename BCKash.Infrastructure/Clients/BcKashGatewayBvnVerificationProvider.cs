@@ -16,9 +16,12 @@ namespace BCKash.Infrastructure.Clients;
 /// </summary>
 public class BcKashGatewayBvnVerificationProvider : IBvnVerificationProvider
 {
-    // The docs give no lifetime for auth/accesscode, so they're reused until the gateway refuses them,
-    // then fetched again once.
+    // The docs give no lifetime for auth/accesscode, and an expired session isn't refused with a 401 —
+    // the gateway answers 400 / "System Error!" exactly as it does for a BVN it has no record of. So a
+    // session is only reused for a short while, and any failed lookup on a reused session logs in
+    // again and retries once. A failure on a fresh session can't be the session, so it's the BVN.
     // Keyed by gateway + account so a change of either never reuses the other's login.
+    private static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(10);
     private static readonly SemaphoreSlim LoginLock = new(1, 1);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, GatewayCredentials> Credentials = new();
 
@@ -42,29 +45,25 @@ public class BcKashGatewayBvnVerificationProvider : IBvnVerificationProvider
 
         try
         {
-            var credentials = await GetCredentialsAsync(forceLogin: false, cancellationToken);
+            var (credentials, fresh) = await GetCredentialsAsync(forceLogin: false, cancellationToken);
             var (status, result) = await QueryAsync(bvn, credentials, cancellationToken);
 
-            if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || (!fresh && !Succeeded(status, result)))
             {
-                credentials = await GetCredentialsAsync(forceLogin: true, cancellationToken);
+                (credentials, _) = await GetCredentialsAsync(forceLogin: true, cancellationToken);
                 (status, result) = await QueryAsync(bvn, credentials, cancellationToken);
             }
 
-            if (status != HttpStatusCode.OK || result is null)
+            if (!Succeeded(status, result))
             {
-                // Status only — BVN data and credentials are never logged (integration note 6).
-                _logger.LogWarning("BVN gateway lookup failed with HTTP {Status}.", (int)status);
-                return new BvnLookupResult(BvnLookupOutcome.Unavailable, Error: $"The BVN service returned {(int)status}. Try again shortly.");
+                // Status and gateway message only — BVN data and credentials are never logged (integration note 6).
+                _logger.LogWarning("BVN gateway lookup failed with HTTP {Status}: {Message}", (int)status, result?.ResponseMessage);
+                return IsBvnRejection(status, result)
+                    ? new BvnLookupResult(BvnLookupOutcome.NotFound)
+                    : new BvnLookupResult(BvnLookupOutcome.Unavailable, Error: Unavailable(status, result));
             }
 
-            if (!result.RequestStatus)
-            {
-                _logger.LogWarning("BVN gateway couldn't process the lookup: {Message}", result.ResponseMessage);
-                return new BvnLookupResult(BvnLookupOutcome.Unavailable, Error: result.ResponseMessage ?? "The BVN service couldn't process the request.");
-            }
-
-            if (!result.IsBvnValid || result.BvnDetails is null)
+            if (!result!.IsBvnValid || result.BvnDetails is null)
             {
                 return new BvnLookupResult(BvnLookupOutcome.NotFound);
             }
@@ -95,21 +94,59 @@ public class BcKashGatewayBvnVerificationProvider : IBvnVerificationProvider
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", credentials.AccessCode);
 
         using var response = await _http.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
+        {
+            return (response.StatusCode, await response.Content.ReadFromJsonAsync<GetBvnResponse>(cancellationToken));
+        }
+
+        // Error bodies are read too when they parse, for the gateway's ResponseMessage.
+        try
+        {
+            return (response.StatusCode, await response.Content.ReadFromJsonAsync<GetBvnResponse>(cancellationToken));
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
         {
             return (response.StatusCode, null);
         }
-
-        return (response.StatusCode, await response.Content.ReadFromJsonAsync<GetBvnResponse>(cancellationToken));
     }
 
-    private async Task<GatewayCredentials> GetCredentialsAsync(bool forceLogin, CancellationToken cancellationToken)
+    private static bool Succeeded(HttpStatusCode status, GetBvnResponse? result) =>
+        status == HttpStatusCode.OK && result is { RequestStatus: true };
+
+    /// <summary>
+    /// Whether a failure on a fresh session means the gateway has no record of the BVN. It answers
+    /// those with 400 or "System Error! Contact your system administrator" rather than isBvnValid: false.
+    /// Login refusals, timeouts and 5xx stay "unavailable"; so do other messages (e.g. "Insufficient balance").
+    /// </summary>
+    private static bool IsBvnRejection(HttpStatusCode status, GetBvnResponse? result)
+    {
+        var code = (int)status;
+        if (code is >= 400 and < 500)
+        {
+            return status is not (HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests);
+        }
+
+        var message = result?.ResponseMessage ?? string.Empty;
+        return status == HttpStatusCode.OK && BvnRejectionMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static readonly string[] BvnRejectionMessages = ["system error", "invalid", "not found", "no record"];
+
+    private static string Unavailable(HttpStatusCode status, GetBvnResponse? result) => status switch
+    {
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "The BVN service refused BC Kash's login. Try again shortly.",
+        HttpStatusCode.OK => result?.ResponseMessage ?? "The BVN service couldn't process the request.",
+        _ => $"The BVN service returned {(int)status}. Try again shortly.",
+    };
+
+    /// <summary>The session to query with, and whether it was just logged in (so a failure isn't the session's fault).</summary>
+    private async Task<(GatewayCredentials Credentials, bool Fresh)> GetCredentialsAsync(bool forceLogin, CancellationToken cancellationToken)
     {
         var key = $"{_settings.BaseUrl}|{_settings.Email}";
         Credentials.TryGetValue(key, out var known);
-        if (known is not null && !forceLogin)
+        if (known is not null && !forceLogin && DateTime.UtcNow - known.IssuedAt < SessionLifetime)
         {
-            return known;
+            return (known, false);
         }
 
         await LoginLock.WaitAsync(cancellationToken);
@@ -118,7 +155,7 @@ public class BcKashGatewayBvnVerificationProvider : IBvnVerificationProvider
             // Another request may have logged in while this one waited.
             if (Credentials.TryGetValue(key, out var current) && !ReferenceEquals(current, known))
             {
-                return current;
+                return (current, true);
             }
 
             using var response = await _http.PostAsJsonAsync(
@@ -131,9 +168,9 @@ public class BcKashGatewayBvnVerificationProvider : IBvnVerificationProvider
                 throw new GatewayLoginException($"login was refused (HTTP {(int)response.StatusCode}{(login?.Message is null ? string.Empty : $": {login.Message}")})");
             }
 
-            var fresh = new GatewayCredentials(login.Authorisation.Auth, login.Authorisation.AccessCode);
+            var fresh = new GatewayCredentials(login.Authorisation.Auth, login.Authorisation.AccessCode, DateTime.UtcNow);
             Credentials[key] = fresh;
-            return fresh;
+            return (fresh, true);
         }
         finally
         {
@@ -143,7 +180,7 @@ public class BcKashGatewayBvnVerificationProvider : IBvnVerificationProvider
 
     private sealed class GatewayLoginException(string message) : Exception(message);
 
-    private sealed record GatewayCredentials(string Auth, string AccessCode);
+    private sealed record GatewayCredentials(string Auth, string AccessCode, DateTime IssuedAt);
 
     private sealed record LoginRequest(
         [property: JsonPropertyName("Email")] string Email,
