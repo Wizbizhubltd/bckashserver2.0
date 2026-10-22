@@ -309,6 +309,38 @@ public class GroupsController : ControllerBase
             "Group");
     }
 
+    /// <summary>Everything recorded against the group, newest first — its creation, edits and status changes.</summary>
+    [HttpGet("{id:int}/audit")]
+    public async Task<ActionResult<IReadOnlyList<ClientAuditEntryResponse>>> Audit(int id, CancellationToken cancellationToken)
+    {
+        if (!await InScopeAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var group = (await _db.Groups.FindAsync([id], cancellationToken))!;
+        var entries = await _db.AuditTrail
+            .Where(a => a.Module == nameof(Group) && a.EntityId == id)
+            .OrderByDescending(a => a.Id)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        var userIds = entries.Where(e => e.UserId.HasValue).Select(e => e.UserId!.Value).Append(group.CreatedById ?? 0).Distinct().ToList();
+        var names = await _db.Users
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}") ? u.Email : $"{u.FirstName} {u.LastName}".Trim(), cancellationToken);
+
+        var items = entries
+            .Select(e => new ClientAuditEntryResponse(e.Id, e.CreatedAt, e.Action, e.Module, e.Notes, e.UserId, e.UserId.HasValue ? names.GetValueOrDefault(e.UserId.Value) : null))
+            .ToList();
+
+        // As for clients, a creation isn't tied to the record id in the audit trail, so the group row says when and by whom.
+        items.Add(new ClientAuditEntryResponse(null, group.CreatedAt, "Created", nameof(Group), null, group.CreatedById,
+            group.CreatedById.HasValue ? names.GetValueOrDefault(group.CreatedById.Value) : null));
+        return Ok(items);
+    }
+
     [HttpPost("{id:int}/decline")]
     [Authorize(Policy = ManagePolicy)]
     public async Task<IActionResult> Decline(int id, ReasonRequest request, CancellationToken cancellationToken)

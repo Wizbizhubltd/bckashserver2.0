@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace BCKash.Api.Controllers;
 
 /// <summary>
-/// Multi-step client onboarding from the office portal, by managers and marketers only (see
+/// Multi-step client onboarding — by managers and marketers from the office portal, and by super admins
+/// from the control portal, who assign the clients to an office and a marketer (see
 /// IClientOnboardingService): check each client's BVN, then onboard a single client or a group of at
 /// least three.
 /// </summary>
@@ -46,13 +47,14 @@ public class ClientOnboardingController : ControllerBase
 
     [HttpPost("clients")]
     public async Task<IActionResult> OnboardClient(OnboardSingleClientRequest request, [FromServices] IStaffNotificationService notifications, CancellationToken cancellationToken) =>
-        ToResponse(await NotifyAsync(await _onboarding.OnboardClientAsync(request.OfficeId, ToInput(request.Client), cancellationToken), notifications, cancellationToken));
+        ToResponse(await NotifyAsync(await _onboarding.OnboardClientAsync(request.OfficeId, request.MarketerId, ToInput(request.Client), cancellationToken), notifications, cancellationToken));
 
     [HttpPost("groups")]
     [Authorize(Policy = "Permission:groups.manage")]
     public async Task<IActionResult> OnboardGroup(OnboardGroupRequest request, [FromServices] IStaffNotificationService notifications, CancellationToken cancellationToken) =>
         ToResponse(await NotifyAsync(await _onboarding.OnboardGroupAsync(
             request.OfficeId,
+            request.MarketerId,
             new OnboardGroupInput(request.Group?.Name ?? string.Empty, request.Group?.Phone, request.Group?.Email, request.Group?.Address),
             (request.Members ?? []).Select(ToInput).ToList(),
             cancellationToken), notifications, cancellationToken));
@@ -91,7 +93,7 @@ public class ClientOnboardingController : ControllerBase
                 problem.Extensions["errors"] = result.Errors;
                 return new ObjectResult(problem) { StatusCode = StatusCodes.Status400BadRequest };
             case OnboardingOutcome.NotPermitted:
-                return Problem(title: "Only managers and marketers can onboard clients.", statusCode: StatusCodes.Status403Forbidden);
+                return Problem(title: "Only managers, marketers and super admins can onboard clients.", statusCode: StatusCodes.Status403Forbidden);
             case OnboardingOutcome.OfficeOutOfScope:
                 return Problem(title: "You can only onboard clients into your own office(s).", statusCode: StatusCodes.Status403Forbidden);
             default:

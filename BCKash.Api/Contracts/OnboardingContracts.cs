@@ -23,12 +23,16 @@ public record OnboardClientRequest(
     string? DetailsSource,
     string? OverrideReason);
 
-public record OnboardSingleClientRequest(int? OfficeId, OnboardClientRequest Client);
+/// <summary><c>MarketerId</c> is required from a super admin (a marketer in <c>OfficeId</c>) and ignored for anyone else.</summary>
+public record OnboardSingleClientRequest(int? OfficeId, OnboardClientRequest Client, int? MarketerId = null);
 
 public record OnboardGroupDetailsRequest(string Name, string? Phone, string? Email, string? Address);
 
-/// <summary>At least three members; the first three become the group's leader, assistant and organizer.</summary>
-public record OnboardGroupRequest(int? OfficeId, OnboardGroupDetailsRequest Group, IReadOnlyList<OnboardClientRequest> Members);
+/// <summary>
+/// At least three members; the first three become the group's leader, assistant and organizer.
+/// <c>MarketerId</c> as for <see cref="OnboardSingleClientRequest"/>.
+/// </summary>
+public record OnboardGroupRequest(int? OfficeId, OnboardGroupDetailsRequest Group, IReadOnlyList<OnboardClientRequest> Members, int? MarketerId = null);
 
 public record OnboardedClientResponse(int Id, string? AccountNo, string? DisplayName, bool IsHighRisk);
 

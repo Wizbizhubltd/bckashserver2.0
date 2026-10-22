@@ -88,9 +88,9 @@ public class ClientOnboardingService : IClientOnboardingService
         return new BvnCheckResult(BvnCheckOutcome.Checked, verification.Id, comparisons.All(c => c.Matches), comparisons, lookup);
     }
 
-    public async Task<OnboardingResult> OnboardClientAsync(int? officeId, OnboardClientInput client, CancellationToken cancellationToken = default)
+    public async Task<OnboardingResult> OnboardClientAsync(int? officeId, int? marketerId, OnboardClientInput client, CancellationToken cancellationToken = default)
     {
-        var (resolvedOffice, failure) = await PrepareAsync(officeId, cancellationToken);
+        var (resolvedOffice, marketer, failure) = await PrepareAsync(officeId, marketerId, cancellationToken);
         if (failure is not null)
         {
             return failure;
@@ -104,7 +104,7 @@ public class ClientOnboardingService : IClientOnboardingService
         }
 
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        var clients = await CreateClientsAsync(prepared, resolvedOffice, cancellationToken);
+        var clients = await CreateClientsAsync(prepared, resolvedOffice, marketer, cancellationToken);
         if (clients is null)
         {
             return new OnboardingResult(OnboardingOutcome.AccountNumberGenerationFailed);
@@ -114,9 +114,9 @@ public class ClientOnboardingService : IClientOnboardingService
         return new OnboardingResult(OnboardingOutcome.Success, clients);
     }
 
-    public async Task<OnboardingResult> OnboardGroupAsync(int? officeId, OnboardGroupInput group, IReadOnlyList<OnboardClientInput> members, CancellationToken cancellationToken = default)
+    public async Task<OnboardingResult> OnboardGroupAsync(int? officeId, int? marketerId, OnboardGroupInput group, IReadOnlyList<OnboardClientInput> members, CancellationToken cancellationToken = default)
     {
-        var (resolvedOffice, failure) = await PrepareAsync(officeId, cancellationToken);
+        var (resolvedOffice, marketer, failure) = await PrepareAsync(officeId, marketerId, cancellationToken);
         if (failure is not null)
         {
             return failure;
@@ -145,6 +145,7 @@ public class ClientOnboardingService : IClientOnboardingService
         {
             Name = group!.Name.Trim(),
             OfficeId = resolvedOffice,
+            StaffId = marketer?.Id,
             Mobile = group.Phone,
             Email = group.Email,
             Address = group.Address,
@@ -154,7 +155,7 @@ public class ClientOnboardingService : IClientOnboardingService
         };
         await _groupService.CreateAsync(newGroup, cancellationToken);
 
-        var clients = await CreateClientsAsync(prepared, resolvedOffice, cancellationToken);
+        var clients = await CreateClientsAsync(prepared, resolvedOffice, marketer, cancellationToken);
         if (clients is null)
         {
             return new OnboardingResult(OnboardingOutcome.AccountNumberGenerationFailed);
@@ -178,12 +179,52 @@ public class ClientOnboardingService : IClientOnboardingService
         return new OnboardingResult(OnboardingOutcome.Success, clients, newGroup);
     }
 
-    /// <summary>Checks the caller may onboard, and settles which office the clients join.</summary>
-    private async Task<(int? OfficeId, OnboardingResult? Failure)> PrepareAsync(int? officeId, CancellationToken cancellationToken)
+    /// <summary>The marketer a super admin hands the onboarded clients to.</summary>
+    private sealed record AssignedMarketer(int Id, string? Name);
+
+    /// <summary>
+    /// Checks the caller may onboard, and settles which office the clients join — and, for a super
+    /// admin, which marketer in that office manages them.
+    /// </summary>
+    private async Task<(int? OfficeId, AssignedMarketer? Marketer, OnboardingResult? Failure)> PrepareAsync(int? officeId, int? marketerId, CancellationToken cancellationToken)
     {
-        if (!UserTypeSlugs.CanCreateClients(await _scope.GetUserTypeAsync(cancellationToken)))
+        var userType = await _scope.GetUserTypeAsync(cancellationToken);
+        if (!UserTypeSlugs.CanOnboardClients(userType))
         {
-            return (null, new OnboardingResult(OnboardingOutcome.NotPermitted));
+            return (null, null, new OnboardingResult(OnboardingOutcome.NotPermitted));
+        }
+
+        // A super admin works in no office, so they say which office the clients join and which of its
+        // marketers manages them; the clients are then documented and managed from the office portal.
+        if (userType == UserTypeSlugs.SuperAdmin)
+        {
+            var errors = new Dictionary<string, string>();
+            if (!officeId.HasValue)
+            {
+                errors["office"] = "Choose the office the clients join.";
+            }
+
+            AssignedMarketer? marketer = null;
+            if (!marketerId.HasValue)
+            {
+                errors["marketer"] = "Choose the marketer who will manage the clients.";
+            }
+            else if (officeId.HasValue)
+            {
+                marketer = await _db.Users
+                    .Where(u => u.Id == marketerId && u.OfficeId == officeId && !u.Blocked
+                        && _db.RoleUsers.Any(ru => ru.UserId == u.Id && ru.Role.Slug == UserTypeSlugs.Marketer))
+                    .Select(u => new AssignedMarketer(u.Id, ((u.FirstName ?? string.Empty) + " " + (u.LastName ?? string.Empty)).Trim()))
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (marketer is null)
+                {
+                    errors["marketer"] = "Choose an active marketer who works in that office.";
+                }
+            }
+
+            return errors.Count > 0
+                ? (null, null, new OnboardingResult(OnboardingOutcome.Invalid, Errors: errors))
+                : (officeId, marketer, null);
         }
 
         // Someone who works in one office onboards into it unless they say otherwise.
@@ -195,15 +236,15 @@ public class ClientOnboardingService : IClientOnboardingService
 
         if (!officeId.HasValue)
         {
-            return (null, new OnboardingResult(OnboardingOutcome.Invalid, Errors: new Dictionary<string, string> { ["office"] = "Choose the office the clients join." }));
+            return (null, null, new OnboardingResult(OnboardingOutcome.Invalid, Errors: new Dictionary<string, string> { ["office"] = "Choose the office the clients join." }));
         }
 
         if (!await _scope.CanAccessOfficeAsync(officeId, cancellationToken))
         {
-            return (null, new OnboardingResult(OnboardingOutcome.OfficeOutOfScope));
+            return (null, null, new OnboardingResult(OnboardingOutcome.OfficeOutOfScope));
         }
 
-        return (officeId, null);
+        return (officeId, null, null);
     }
 
     private sealed record PreparedMember(Client Client, BvnVerification Verification, IReadOnlyList<BvnFieldComparison> Comparisons);
@@ -306,12 +347,13 @@ public class ClientOnboardingService : IClientOnboardingService
     }
 
     /// <summary>Null when an account number couldn't be generated (the caller rolls back).</summary>
-    private async Task<List<Client>?> CreateClientsAsync(List<PreparedMember> prepared, int? officeId, CancellationToken cancellationToken)
+    private async Task<List<Client>?> CreateClientsAsync(List<PreparedMember> prepared, int? officeId, AssignedMarketer? marketer, CancellationToken cancellationToken)
     {
         var created = new List<Client>();
         foreach (var member in prepared)
         {
             member.Client.OfficeId = officeId;
+            member.Client.StaffId = marketer?.Id;
             var result = await _clientService.CreateAsync(member.Client, cancellationToken);
             if (result.Outcome != ClientWriteOutcome.Success)
             {
@@ -333,6 +375,7 @@ public class ClientOnboardingService : IClientOnboardingService
                     bvnDetailsSource = member.Client.BvnDetailsSource,
                     mismatches = member.Comparisons.Where(c => !c.Matches).Select(c => new { c.Field, c.Given, c.FromBvn }),
                     highRiskReason = member.Client.HighRiskReason,
+                    assignedMarketer = marketer?.Name,
                 }),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,

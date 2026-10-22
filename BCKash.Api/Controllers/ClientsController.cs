@@ -240,7 +240,11 @@ public class ClientsController : ControllerBase
 
         var existing = (await _db.Clients.FindAsync([id], cancellationToken))!;
         var wasPending = existing.Status == ClientStatus.Pending;
-        if (await _access.DocumentationBlockAsync(existing, cancellationToken) is { } block)
+
+        // Super admins correct any client's profile from the control portal, approved or not — the
+        // audit interceptor records every changed field, before and after.
+        var isSuperAdmin = await _scope.GetUserTypeAsync(cancellationToken) == UserTypeSlugs.SuperAdmin;
+        if (!isSuperAdmin && await _access.DocumentationBlockAsync(existing, cancellationToken) is { } block)
         {
             return Problem(title: block, statusCode: StatusCodes.Status403Forbidden);
         }
