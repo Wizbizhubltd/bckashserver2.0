@@ -31,7 +31,10 @@ public interface IClientAccess
     /// <summary>Why the caller can't change the client's documentation right now, or null when they can.</summary>
     Task<string?> DocumentationBlockAsync(Client client, CancellationToken cancellationToken = default);
 
-    /// <summary>Whoever onboarded the client — the one who documents them and asks for edit privilege.</summary>
+    /// <summary>
+    /// Whoever onboarded the client — or, for a client a super admin onboarded, the marketer they were
+    /// assigned to: the one who documents them and asks for edit privilege.
+    /// </summary>
     Task<bool> IsOnboarderAsync(Client client, CancellationToken cancellationToken = default);
 
     /// <summary>

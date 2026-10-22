@@ -40,6 +40,12 @@ public static class UserTypeSlugs
     /// </summary>
     public static bool CanCreateClients(string? slug) => slug is null or Manager or Marketer;
 
+    /// <summary>
+    /// Who runs the BVN-verified onboarding flow: managers and marketers from the office portal, and
+    /// super admins from the control portal — who must hand the clients to an office and a marketer there.
+    /// </summary>
+    public static bool CanOnboardClients(string? slug) => CanCreateClients(slug) || slug == SuperAdmin;
+
     /// <summary>Controllers approve (or decline) the clients managers and marketers onboard; super admins can too, from the control portal. A user with no user_type keeps their old access.</summary>
     public static bool CanApproveClients(string? slug) => slug is null or Controller or SuperAdmin;
 

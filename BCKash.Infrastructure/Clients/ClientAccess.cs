@@ -43,7 +43,9 @@ public class ClientAccess : IClientAccess
         }
 
         // Clients from before onboarding tracked who did it can be documented by any manager or marketer in their office.
-        return UserTypeSlugs.CanCreateClients(userType) && (client.CreatedById is null || client.CreatedById == _currentUser.UserId);
+        // A client a super admin onboarded is documented by the marketer they were assigned to.
+        return UserTypeSlugs.CanCreateClients(userType)
+            && (client.CreatedById is null || client.CreatedById == _currentUser.UserId || client.StaffId == _currentUser.UserId);
     }
 
     public async Task<string?> DocumentationBlockAsync(Client client, CancellationToken cancellationToken = default)
@@ -67,6 +69,12 @@ public class ClientAccess : IClientAccess
     {
         var client = await _db.Clients.FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
         if (client?.EditPrivilegeRequestId is null || client.Status != ClientStatus.Active)
+        {
+            return;
+        }
+
+        // A super admin's edit is an oversight correction, not the requester using their privilege.
+        if (await _scope.GetUserTypeAsync(cancellationToken) == UserTypeSlugs.SuperAdmin)
         {
             return;
         }

@@ -55,7 +55,7 @@ public enum OnboardingOutcome
     AccountNumberGenerationFailed,
 }
 
-/// <summary><c>Errors</c> keys are "group", "office", or "members[i]" for the i-th client (0-based).</summary>
+/// <summary><c>Errors</c> keys are "group", "office", "marketer", or "members[i]" for the i-th client (0-based).</summary>
 public record OnboardingResult(
     OnboardingOutcome Outcome,
     IReadOnlyList<Client>? Clients = null,
@@ -64,7 +64,9 @@ public record OnboardingResult(
 
 /// <summary>
 /// Onboards clients from the office portal — one at a time, or as a group of at least
-/// <see cref="ClientOnboardingRules.MinimumGroupSize"/>. Only managers and marketers onboard clients.
+/// <see cref="ClientOnboardingRules.MinimumGroupSize"/>. Managers and marketers onboard into their own
+/// office(s); a super admin onboards into any office and must name a marketer there (<c>marketerId</c>)
+/// who manages the clients from then on — for everyone else <c>marketerId</c> is ignored.
 /// Every client's BVN is looked up first (<see cref="CheckBvnAsync"/>); onboarding then refers to that
 /// lookup, and everything for one onboarding is saved together or not at all.
 /// </summary>
@@ -72,7 +74,7 @@ public interface IClientOnboardingService
 {
     Task<BvnCheckResult> CheckBvnAsync(string bvn, string fullName, string? phone, CancellationToken cancellationToken = default);
 
-    Task<OnboardingResult> OnboardClientAsync(int? officeId, OnboardClientInput client, CancellationToken cancellationToken = default);
+    Task<OnboardingResult> OnboardClientAsync(int? officeId, int? marketerId, OnboardClientInput client, CancellationToken cancellationToken = default);
 
-    Task<OnboardingResult> OnboardGroupAsync(int? officeId, OnboardGroupInput group, IReadOnlyList<OnboardClientInput> members, CancellationToken cancellationToken = default);
+    Task<OnboardingResult> OnboardGroupAsync(int? officeId, int? marketerId, OnboardGroupInput group, IReadOnlyList<OnboardClientInput> members, CancellationToken cancellationToken = default);
 }
