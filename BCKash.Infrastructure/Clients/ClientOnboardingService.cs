@@ -326,6 +326,9 @@ public class ClientOnboardingService : IClientOnboardingService
                 LastName = useBvn ? verification.LastName ?? lastName : lastName,
                 Mobile = useBvn && !string.IsNullOrWhiteSpace(verification.Phone) ? verification.Phone : member.Phone,
                 Email = string.IsNullOrWhiteSpace(member.Email) ? null : member.Email.Trim(),
+
+                // The date of birth isn't asked for at onboarding; the BVN record's is the client's.
+                Dob = ClientOnboardingRules.ParseBvnBirthDate(verification.BirthDate, DateOnly.FromDateTime(DateTime.UtcNow)),
                 Bvn = bvn,
                 Status = ClientStatus.Pending,
                 ClientType = ClientType.Individual,

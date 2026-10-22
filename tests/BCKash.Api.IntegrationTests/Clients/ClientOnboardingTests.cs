@@ -47,6 +47,7 @@ public class ClientOnboardingTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.Equal(ClientStatus.Pending, client!.Status);
         Assert.Equal(officeId, client.OfficeId);
         Assert.Equal("+2348031234567", client.Mobile);
+        Assert.Equal(new DateOnly(1990, 1, 1), client.Dob); // the fake BVN record's "01-Jan-90"
         Assert.True(client.Actions!.CanEditDetails);
         Assert.False(client.Actions.CanApprove);
 

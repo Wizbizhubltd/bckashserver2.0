@@ -27,6 +27,34 @@ public static class ClientOnboardingRules
 
     public static bool IsValidBvn(string? bvn) => bvn is { Length: 11 } && bvn.All(char.IsDigit);
 
+    private static readonly string[] BirthDateFormats =
+    [
+        "dd-MMM-yy", "d-MMM-yy", "dd-MMM-yyyy", "d-MMM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy",
+        "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ssZ", "yyyy-MM-ddTHH:mm:ss.fffZ",
+    ];
+
+    /// <summary>
+    /// The birth date on a BVN record, which providers send as text — the gateway as "29-Oct-74" —
+    /// or null when it's blank or unreadable. A two-digit year is a birth year, so it's never in the
+    /// future: "74" is 1974 and "05" is 2005 (until that would be after <paramref name="today"/>).
+    /// </summary>
+    public static DateOnly? ParseBvnBirthDate(string? value, DateOnly today)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !DateTime.TryParseExact(value.Trim(), BirthDateFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed))
+        {
+            return null;
+        }
+
+        var date = DateOnly.FromDateTime(parsed);
+        while (date > today)
+        {
+            date = date.AddYears(-100);
+        }
+
+        return date;
+    }
+
     /// <summary>
     /// Names compare case- and space-insensitively; phones compare on their last 10 digits, so
     /// 0803… and +234803… match. Blank on either side isn't a mismatch — there's nothing to compare.
