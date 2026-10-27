@@ -212,6 +212,9 @@ public class ClientsControllerTests : IClassFixture<BCKashWebApplicationFactory>
         var byBvn = await httpClient.GetFromJsonAsync<PagedResult<ClientListItemResponse>>($"/api/v1/clients?bvn=BVN{unique}", TestJson.Options);
         Assert.Equal(1, byBvn!.TotalCount);
 
+        var bySearchBvn = await httpClient.GetFromJsonAsync<PagedResult<ClientListItemResponse>>($"/api/v1/clients?search=BVN{unique}", TestJson.Options);
+        Assert.Equal(1, bySearchBvn!.TotalCount);
+
         var byMobile = await httpClient.GetFromJsonAsync<PagedResult<ClientListItemResponse>>($"/api/v1/clients?mobile=0800{unique}", TestJson.Options);
         Assert.Equal(1, byMobile!.TotalCount);
 

@@ -153,7 +153,7 @@ public class GroupBulkActionsTests : IClassFixture<BCKashWebApplicationFactory>
             $"/api/v1/groups/{targetId}/members/bulk-move", new BulkMoveClientsRequest([freeId, activeLoanId, defaulterId]), TestJson.Options));
 
         Assert.Equal(1, result.Succeeded);
-        Assert.Equal("Has an active loan.", result.Skipped.Single(s => s.Id == activeLoanId).Reason);
+        Assert.Equal("Has an unsettled loan and cannot be moved.", result.Skipped.Single(s => s.Id == activeLoanId).Reason);
         Assert.Equal("Is a defaulter.", result.Skipped.Single(s => s.Id == defaulterId).Reason);
 
         using var verify = _factory.Services.CreateScope();
