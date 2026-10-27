@@ -47,7 +47,7 @@ public class ClientsController : ControllerBase
     /// <summary>
     /// FR-CLI-5's search/filter screen, paginated per NFR-3. <paramref name="search"/> matches
     /// FirstName/MiddleName/LastName/DisplayName — not FullName, a legacy denormalized
-    /// concatenation that isn't kept authoritative by anything in this phase.
+    /// concatenation that isn't kept authoritative by anything in this phase — or a BVN prefix.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<PagedResult<ClientListItemResponse>>> List(
@@ -76,7 +76,8 @@ public class ClientsController : ControllerBase
                 EF.Functions.Like(c.FirstName, pattern) ||
                 EF.Functions.Like(c.MiddleName, pattern) ||
                 EF.Functions.Like(c.LastName, pattern) ||
-                EF.Functions.Like(c.DisplayName, pattern));
+                EF.Functions.Like(c.DisplayName, pattern) ||
+                (c.Bvn != null && c.Bvn.StartsWith(search)));
         }
 
         if (!string.IsNullOrWhiteSpace(accountNo))

@@ -66,7 +66,7 @@ public class GroupMembersController : ControllerBase
             async c => (await _membershipService.MoveAsync(c.Id, groupId, cancellationToken)).Outcome switch
             {
                 MembershipWriteOutcome.Success => null,
-                MembershipWriteOutcome.HasActiveLoan => "Has an active loan.",
+                MembershipWriteOutcome.HasActiveLoan => "Has an unsettled loan and cannot be moved.",
                 MembershipWriteOutcome.Defaulter => "Is a defaulter.",
                 MembershipWriteOutcome.DifferentOffice => "Is in a different office from the group.",
                 MembershipWriteOutcome.AlreadyAMember => "Already in this group.",
