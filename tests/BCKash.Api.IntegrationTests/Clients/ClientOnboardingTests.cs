@@ -292,8 +292,15 @@ public class ClientOnboardingTests : IClassFixture<BCKashWebApplicationFactory>
         var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
         var client = new Client
         {
-            FirstName = "Ada", LastName = "Obi", DisplayName = "Ada Obi", Mobile = "08031234567", Bvn = bvn, OfficeId = officeId,
-            Status = ClientStatus.Active, ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-3)), CreatedAt = DateTime.UtcNow.AddYears(-3),
+            FirstName = "Ada",
+            LastName = "Obi",
+            DisplayName = "Ada Obi",
+            Mobile = "08031234567",
+            Bvn = bvn,
+            OfficeId = officeId,
+            Status = ClientStatus.Active,
+            ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-3)),
+            CreatedAt = DateTime.UtcNow.AddYears(-3),
         };
         db.Clients.Add(client);
         await db.SaveChangesAsync();
