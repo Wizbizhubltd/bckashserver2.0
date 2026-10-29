@@ -56,10 +56,102 @@ public class ClientOnboardingService : IClientOnboardingService
             return new BvnCheckResult(BvnCheckOutcome.AlreadyRegistered, Error: "A client with this BVN is already on the platform.");
         }
 
+        return await LookUpAsync(bvn, firstName, middleName, lastName, phone, cancellationToken);
+    }
+
+    public async Task<BvnCheckResult> CheckExistingClientBvnAsync(Client client, string? bvn, CancellationToken cancellationToken = default)
+    {
+        bvn = (string.IsNullOrWhiteSpace(client.Bvn) ? bvn : client.Bvn)?.Trim() ?? string.Empty;
+        if (!ClientOnboardingRules.IsValidBvn(bvn))
+        {
+            return new BvnCheckResult(BvnCheckOutcome.InvalidBvn, Error: "A BVN is 11 digits.");
+        }
+
+        if (string.IsNullOrWhiteSpace(client.FirstName) || string.IsNullOrWhiteSpace(client.LastName))
+        {
+            return new BvnCheckResult(BvnCheckOutcome.NameRequired, Error: "Add the client's first and last name before verifying their BVN.");
+        }
+
+        if (await BvnInUseAsync(bvn, cancellationToken, exceptClientId: client.Id))
+        {
+            return new BvnCheckResult(BvnCheckOutcome.AlreadyRegistered, Error: "Another client with this BVN is already on the platform.");
+        }
+
+        return await LookUpAsync(bvn, client.FirstName.Trim(), client.MiddleName?.Trim(), client.LastName.Trim(), client.Mobile, cancellationToken);
+    }
+
+    public async Task<ExistingBvnResult> VerifyExistingClientBvnAsync(Client client, int verificationId, string? detailsSource, string? overrideReason, CancellationToken cancellationToken = default)
+    {
+        if (client.BvnVerifiedAt.HasValue)
+        {
+            return new ExistingBvnResult(ExistingBvnOutcome.AlreadyVerified, Error: "This client's BVN is already verified.");
+        }
+
+        var verification = await _db.BvnVerifications.FirstOrDefaultAsync(v => v.Id == verificationId, cancellationToken);
+        if (verification is null
+            || verification.ClientId.HasValue
+            || (!string.IsNullOrWhiteSpace(client.Bvn) && verification.Bvn != client.Bvn.Trim())
+            || verification.CreatedAt < DateTime.UtcNow - ClientOnboardingRules.VerificationLifetime)
+        {
+            return new ExistingBvnResult(ExistingBvnOutcome.Invalid, Error: "Check the client's BVN again before verifying it.");
+        }
+
+        if (!verification.Found)
+        {
+            return new ExistingBvnResult(ExistingBvnOutcome.Invalid, Error: "This BVN is invalid — it doesn't belong to anyone.");
+        }
+
+        if (await BvnInUseAsync(verification.Bvn, cancellationToken, exceptClientId: client.Id))
+        {
+            return new ExistingBvnResult(ExistingBvnOutcome.Invalid, Error: "Another client with this BVN is already on the platform.");
+        }
+
+        var comparisons = Compare(verification, client.FirstName ?? string.Empty, client.MiddleName, client.LastName, client.Mobile);
+        var source = comparisons.All(c => c.Matches) ? ClientOnboardingRules.DetailsFromBvn : detailsSource?.Trim().ToLowerInvariant();
+        if (source is not (ClientOnboardingRules.DetailsFromBvn or ClientOnboardingRules.DetailsFromClient))
+        {
+            return new ExistingBvnResult(ExistingBvnOutcome.Invalid, Error: "The BVN details differ from the client's — choose whose details to keep.");
+        }
+
+        if (source == ClientOnboardingRules.DetailsFromClient && string.IsNullOrWhiteSpace(overrideReason))
+        {
+            return new ExistingBvnResult(ExistingBvnOutcome.Invalid, Error: "Give a reason for keeping the client's details over the BVN's.");
+        }
+
+        if (source == ClientOnboardingRules.DetailsFromBvn)
+        {
+            client.FirstName = verification.FirstName ?? client.FirstName;
+            client.MiddleName = verification.MiddleName ?? client.MiddleName;
+            client.LastName = verification.LastName ?? client.LastName;
+            client.Mobile = string.IsNullOrWhiteSpace(verification.Phone) ? client.Mobile : verification.Phone;
+            client.Dob = ClientOnboardingRules.ParseBvnBirthDate(verification.BirthDate, DateOnly.FromDateTime(DateTime.UtcNow)) ?? client.Dob;
+            client.DisplayName = string.Join(' ', new[] { client.FirstName, client.MiddleName, client.LastName }.Where(p => !string.IsNullOrWhiteSpace(p)));
+            client.FullName = client.DisplayName;
+        }
+        else
+        {
+            client.IsHighRisk = true;
+            client.HighRiskReason = overrideReason!.Trim();
+            client.HighRiskFlaggedById = _currentUser.UserId;
+            client.HighRiskFlaggedAt = DateTime.UtcNow;
+        }
+
+        client.Bvn = verification.Bvn;
+        client.BvnVerifiedAt = verification.CreatedAt;
+        client.BvnDetailsSource = source;
+        verification.ClientId = client.Id;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new ExistingBvnResult(ExistingBvnOutcome.Verified, client);
+    }
+
+    /// <summary>Looks the BVN up with the provider, records the lookup, and compares it with the given name and phone.</summary>
+    private async Task<BvnCheckResult> LookUpAsync(string bvn, string firstName, string? middleName, string? lastName, string? phone, CancellationToken cancellationToken)
+    {
         var lookup = await _bvnProvider.LookupAsync(bvn, firstName, middleName, lastName, phone, cancellationToken);
         if (lookup.Outcome == BvnLookupOutcome.Unavailable)
         {
-            return new BvnCheckResult(BvnCheckOutcome.ProviderUnavailable, Error: lookup.Error ?? "BVN verification is unavailable right now.");
+            return new BvnCheckResult(BvnCheckOutcome.ProviderUnavailable, Error: lookup.Error ?? BcKashGatewayBvnVerificationProvider.ProviderError);
         }
 
         var verification = new BvnVerification
@@ -390,8 +482,8 @@ public class ClientOnboardingService : IClientOnboardingService
         return created;
     }
 
-    private Task<bool> BvnInUseAsync(string bvn, CancellationToken cancellationToken) =>
-        _db.Clients.AnyAsync(c => c.Bvn == bvn && c.DeletedAt == null, cancellationToken);
+    private Task<bool> BvnInUseAsync(string bvn, CancellationToken cancellationToken, int? exceptClientId = null) =>
+        _db.Clients.AnyAsync(c => c.Bvn == bvn && c.DeletedAt == null && c.Id != exceptClientId, cancellationToken);
 
     private static List<BvnFieldComparison> Compare(BvnVerification fromBvn, string firstName, string? middleName, string? lastName, string? phone)
     {

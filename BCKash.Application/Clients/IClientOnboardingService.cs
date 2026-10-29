@@ -42,6 +42,17 @@ public record OnboardClientInput(
     string? DetailsSource,
     string? OverrideReason);
 
+public enum ExistingBvnOutcome
+{
+    Verified,
+    /// <summary>Something about the request is wrong; <see cref="ExistingBvnResult.Error"/> says what.</summary>
+    Invalid,
+    /// <summary>The client's BVN is already verified.</summary>
+    AlreadyVerified,
+}
+
+public record ExistingBvnResult(ExistingBvnOutcome Outcome, Client? Client = null, string? Error = null);
+
 public record OnboardGroupInput(string Name, string? Phone, string? Email, string? Address);
 
 public enum OnboardingOutcome
@@ -77,4 +88,17 @@ public interface IClientOnboardingService
     Task<OnboardingResult> OnboardClientAsync(int? officeId, int? marketerId, OnboardClientInput client, CancellationToken cancellationToken = default);
 
     Task<OnboardingResult> OnboardGroupAsync(int? officeId, int? marketerId, OnboardGroupInput group, IReadOnlyList<OnboardClientInput> members, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Looks up the BVN of a client onboarded before BVN checks — the one on file, or <paramref name="bvn"/>
+    /// when they have none — and compares it with the client's name and phone as they are now.
+    /// </summary>
+    Task<BvnCheckResult> CheckExistingClientBvnAsync(Client client, string? bvn, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks an existing client's BVN verified from a lookup (<see cref="CheckExistingClientBvnAsync"/>), with
+    /// onboarding's rules when it didn't match: "bvn" takes the provider's name, phone and date of birth; "client"
+    /// keeps theirs, needs <paramref name="overrideReason"/> and flags the client high risk.
+    /// </summary>
+    Task<ExistingBvnResult> VerifyExistingClientBvnAsync(Client client, int verificationId, string? detailsSource, string? overrideReason, CancellationToken cancellationToken = default);
 }

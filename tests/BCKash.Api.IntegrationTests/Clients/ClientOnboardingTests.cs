@@ -222,6 +222,84 @@ public class ClientOnboardingTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task A_client_onboarded_before_bvn_checks_is_verified_now_when_their_bvn_matches()
+    {
+        var (officeId, marketer, _) = await SetUpOfficeAsync();
+        var clientId = await SeedOldClientAsync(officeId, NewBvn());
+
+        var check = await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-check", new ExistingClientBvnCheckRequest(null));
+        Assert.True(check.IsSuccessStatusCode, await check.Content.ReadAsStringAsync());
+        var result = (await check.Content.ReadFromJsonAsync<BvnCheckResponse>(TestJson.Options))!;
+        Assert.True(result.Matches);
+
+        var verified = await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-verification", new VerifyExistingClientBvnRequest(result.VerificationId, null, null));
+        Assert.True(verified.IsSuccessStatusCode, await verified.Content.ReadAsStringAsync());
+        var client = (await verified.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options))!;
+        Assert.NotNull(client.BvnVerifiedAt);
+        Assert.Equal("bvn", client.BvnDetailsSource);
+        Assert.False(client.IsHighRisk);
+
+        // Once verified there's nothing left to verify, and the lookup can't be reused.
+        Assert.Equal(HttpStatusCode.Conflict, (await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-check", new ExistingClientBvnCheckRequest(null))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-verification", new VerifyExistingClientBvnRequest(result.VerificationId, null, null))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Verifying_an_old_clients_mismatched_bvn_needs_a_choice_and_a_reason_to_keep_their_details()
+    {
+        var (officeId, marketer, _) = await SetUpOfficeAsync();
+        var clientId = await SeedOldClientAsync(officeId, NewBvn(mismatch: true));
+
+        var result = (await (await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-check", new ExistingClientBvnCheckRequest(null))).Content.ReadFromJsonAsync<BvnCheckResponse>(TestJson.Options))!;
+        Assert.False(result.Matches);
+
+        var url = $"/api/v1/clients/{clientId}/bvn-verification";
+        Assert.Equal(HttpStatusCode.BadRequest, (await marketer.PostAsJsonAsync(url, new VerifyExistingClientBvnRequest(result.VerificationId, null, null))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await marketer.PostAsJsonAsync(url, new VerifyExistingClientBvnRequest(result.VerificationId, "client", " "))).StatusCode);
+
+        var kept = await marketer.PostAsJsonAsync(url, new VerifyExistingClientBvnRequest(result.VerificationId, "client", "Known to the branch for years"));
+        Assert.True(kept.IsSuccessStatusCode, await kept.Content.ReadAsStringAsync());
+        var client = (await kept.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options))!;
+        Assert.Equal("client", client.BvnDetailsSource);
+        Assert.Equal("Ada", client.FirstName);
+        Assert.True(client.IsHighRisk);
+    }
+
+    [Fact]
+    public async Task An_old_client_with_no_bvn_on_file_takes_the_one_entered_when_verified()
+    {
+        var (officeId, marketer, _) = await SetUpOfficeAsync();
+        var clientId = await SeedOldClientAsync(officeId, bvn: null);
+        var bvn = NewBvn(mismatch: true);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-check", new ExistingClientBvnCheckRequest(null))).StatusCode);
+        var result = (await (await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-check", new ExistingClientBvnCheckRequest(bvn))).Content.ReadFromJsonAsync<BvnCheckResponse>(TestJson.Options))!;
+
+        var verified = await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/bvn-verification", new VerifyExistingClientBvnRequest(result.VerificationId, "bvn", null));
+        Assert.True(verified.IsSuccessStatusCode, await verified.Content.ReadAsStringAsync());
+        var client = (await verified.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options))!;
+        Assert.Equal(bvn, client.Bvn);
+        Assert.Equal(result.FromBvn.FirstName, client.FirstName);
+        Assert.Equal(result.FromBvn.LastName, client.LastName);
+        Assert.False(client.IsHighRisk);
+    }
+
+    /// <summary>An approved client from before BVN checks: on the books, never verified.</summary>
+    private async Task<int> SeedOldClientAsync(int officeId, string? bvn)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+        var client = new Client
+        {
+            FirstName = "Ada", LastName = "Obi", DisplayName = "Ada Obi", Mobile = "08031234567", Bvn = bvn, OfficeId = officeId,
+            Status = ClientStatus.Active, ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-3)), CreatedAt = DateTime.UtcNow.AddYears(-3),
+        };
+        db.Clients.Add(client);
+        await db.SaveChangesAsync();
+        return client.Id;
+    }
+
     private async Task SeedContactsAsync(int clientId)
     {
         using var scope = _factory.Services.CreateScope();

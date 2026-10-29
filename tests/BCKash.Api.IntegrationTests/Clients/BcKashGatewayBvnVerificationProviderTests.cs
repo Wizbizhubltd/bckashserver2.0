@@ -87,7 +87,9 @@ public class BcKashGatewayBvnVerificationProviderTests
     public async Task A_refused_login_or_failed_request_is_reported_as_unavailable()
     {
         var refusedLogin = new StubHandler(_ => Json("""{"error": true, "message": "Invalid login details"}"""));
-        Assert.Equal(BvnLookupOutcome.Unavailable, (await Provider(refusedLogin).LookupAsync("21111111111", "Ada", null, "Obi", null)).Outcome);
+        var refused = await Provider(refusedLogin).LookupAsync("21111111111", "Ada", null, "Obi", null);
+        Assert.Equal(BvnLookupOutcome.Unavailable, refused.Outcome);
+        Assert.Equal("Invalid login details", refused.Error);
 
         var notProcessed = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
             ? Json(LoginJson)
@@ -123,23 +125,27 @@ public class BcKashGatewayBvnVerificationProviderTests
     }
 
     [Fact]
-    public async Task A_bvn_the_gateway_rejects_on_a_fresh_session_is_not_found_rather_than_unavailable()
+    public async Task The_gateways_own_error_message_is_passed_on_and_the_fallback_used_only_when_it_gives_none()
     {
-        var rejected400 = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
+        var invalidBvn = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
             ? Json(LoginJson)
-            : Json(SystemErrorJson, HttpStatusCode.BadRequest));
-        Assert.Equal(BvnLookupOutcome.NotFound, (await Provider(rejected400).LookupAsync("12345678901", "Ada", null, "Obi", null)).Outcome);
-        Assert.Single(rejected400.Requests, r => r.Path == "/v1/identity/get_bvn");
+            : Json("""{"RequestStatus": false, "ResponseMessage": "Valid BVN is required (11 digits)", "isBvnValid": false}""", HttpStatusCode.BadRequest));
+        var result = await Provider(invalidBvn).LookupAsync("12345678901", "Ada", null, "Obi", null);
+        Assert.Equal(BvnLookupOutcome.Unavailable, result.Outcome);
+        Assert.Equal("Valid BVN is required (11 digits)", result.Error);
+
+        // A fresh session's failure isn't retried.
+        Assert.Single(invalidBvn.Requests, r => r.Path == "/v1/identity/get_bvn");
 
         var systemError = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
             ? Json(LoginJson)
-            : Json(SystemErrorJson));
-        Assert.Equal(BvnLookupOutcome.NotFound, (await Provider(systemError).LookupAsync("12345678901", "Ada", null, "Obi", null)).Outcome);
+            : Json(SystemErrorJson, HttpStatusCode.BadRequest));
+        Assert.Equal("System Error! Contact your system administrator", (await Provider(systemError).LookupAsync("12345678901", "Ada", null, "Obi", null)).Error);
 
         var emptyBody400 = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
             ? Json(LoginJson)
             : new HttpResponseMessage(HttpStatusCode.BadRequest));
-        Assert.Equal(BvnLookupOutcome.NotFound, (await Provider(emptyBody400).LookupAsync("12345678901", "Ada", null, "Obi", null)).Outcome);
+        Assert.Equal(BcKashGatewayBvnVerificationProvider.ProviderError, (await Provider(emptyBody400).LookupAsync("12345678901", "Ada", null, "Obi", null)).Error);
     }
 
     [Fact]
@@ -148,7 +154,9 @@ public class BcKashGatewayBvnVerificationProviderTests
         var outage = new StubHandler(request => request.RequestUri!.AbsolutePath == "/v1/initialisation/init"
             ? Json(LoginJson)
             : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
-        Assert.Equal(BvnLookupOutcome.Unavailable, (await Provider(outage).LookupAsync("21111111111", "Ada", null, "Obi", null)).Outcome);
+        var result = await Provider(outage).LookupAsync("21111111111", "Ada", null, "Obi", null);
+        Assert.Equal(BvnLookupOutcome.Unavailable, result.Outcome);
+        Assert.Equal(BcKashGatewayBvnVerificationProvider.ProviderError, result.Error);
     }
 
     private const string SystemErrorJson = """

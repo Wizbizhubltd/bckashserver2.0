@@ -420,6 +420,110 @@ public class ClientsController : ControllerBase
         return await ToTransitionResultAsync(result, cancellationToken);
     }
 
+    /// <summary>
+    /// Bulk action: moves the ticked clients to an office under a marketer there. Each leaves their group and
+    /// takes their open savings accounts along; clients with an open loan or loan application, defaulters and
+    /// clients already in that office stay where they are and are reported back.
+    /// </summary>
+    [HttpPost("bulk/transfer")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<ActionResult<BulkActionResponse>> BulkTransfer(BulkTransferClientsRequest request, CancellationToken cancellationToken)
+    {
+        if (request.ClientIds is not { Count: > 0 })
+        {
+            return Problem(title: "Select at least one client.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (!await _db.Offices.AnyAsync(o => o.Id == request.OfficeId && o.Active && o.DeletedAt == null, cancellationToken))
+        {
+            return Problem(title: "Office not found or inactive.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (!await _scope.CanAccessOfficeAsync(request.OfficeId, cancellationToken))
+        {
+            return OfficeOutOfScope();
+        }
+
+        var ids = request.ClientIds.Distinct().ToList();
+        var clients = await (await ScopedAsync(_db.Clients.Where(c => ids.Contains(c.Id) && c.DeletedAt == null), cancellationToken))
+            .OrderByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        return Ok(await BulkActionRunner.RunAsync(
+            clients,
+            ids,
+            c => c.Id,
+            c => $"{c.FirstName} {c.LastName}".Trim() is { Length: > 0 } name ? name : c.AccountNo ?? $"Client #{c.Id}",
+            async c => (await _clientService.TransferOfficeAsync(c.Id, request.OfficeId, request.MarketerId, cancellationToken)).Outcome switch
+            {
+                ClientWriteOutcome.Success => null,
+                ClientWriteOutcome.AlreadyInOffice => "Already in this office.",
+                ClientWriteOutcome.HasActiveLoan => "Has an unsettled loan or a pending loan application.",
+                ClientWriteOutcome.Defaulter => "Is a defaulter.",
+                ClientWriteOutcome.MarketerNotFound => "The marketer wasn't found or is disabled.",
+                ClientWriteOutcome.MarketerInDifferentOffice => "The marketer works in a different office.",
+                ClientWriteOutcome.OfficeNotFound => "Office not found or inactive.",
+                _ => "Not found.",
+            },
+            "Client"));
+    }
+
+    /// <summary>
+    /// "Verify now" for a client onboarded before BVN checks: looks their BVN up and compares it with their name
+    /// and phone. A match is then confirmed with <see cref="VerifyBvn"/>; a mismatch needs a choice of whose details to keep.
+    /// </summary>
+    [HttpPost("{id:int}/bvn-check")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<ActionResult<BvnCheckResponse>> CheckBvn(int id, ExistingClientBvnCheckRequest request, [FromServices] IClientOnboardingService onboarding, CancellationToken cancellationToken)
+    {
+        var client = await (await ScopedAsync(_db.Clients.Where(c => c.Id == id), cancellationToken)).FirstOrDefaultAsync(cancellationToken);
+        if (client is null)
+        {
+            return NotFound();
+        }
+
+        if (client.BvnVerifiedAt.HasValue)
+        {
+            return Problem(title: "This client's BVN is already verified.", statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var result = await onboarding.CheckExistingClientBvnAsync(client, request.Bvn, cancellationToken);
+        return result.Outcome switch
+        {
+            BvnCheckOutcome.Checked => Ok(new BvnCheckResponse(
+                result.VerificationId!.Value,
+                result.Matches,
+                result.Comparisons!,
+                new BvnDetailsResponse(
+                    result.FromBvn!.FirstName, result.FromBvn.MiddleName, result.FromBvn.LastName,
+                    result.FromBvn.Phone, result.FromBvn.BirthDate, result.FromBvn.Gender, result.FromBvn.Photo))),
+            BvnCheckOutcome.NotFound => Problem(title: result.Error, statusCode: StatusCodes.Status404NotFound),
+            BvnCheckOutcome.AlreadyRegistered => Problem(title: result.Error, statusCode: StatusCodes.Status409Conflict),
+            BvnCheckOutcome.ProviderUnavailable => Problem(title: result.Error, statusCode: StatusCodes.Status503ServiceUnavailable),
+            _ => Problem(title: result.Error, statusCode: StatusCodes.Status400BadRequest),
+        };
+    }
+
+    [HttpPost("{id:int}/bvn-verification")]
+    [Authorize(Policy = ManagePolicy)]
+    public async Task<ActionResult<ClientResponse>> VerifyBvn(int id, VerifyExistingClientBvnRequest request, [FromServices] IClientOnboardingService onboarding, CancellationToken cancellationToken)
+    {
+        var client = await (await ScopedAsync(_db.Clients.Where(c => c.Id == id), cancellationToken)).FirstOrDefaultAsync(cancellationToken);
+        if (client is null)
+        {
+            return NotFound();
+        }
+
+        var result = await onboarding.VerifyExistingClientBvnAsync(client, request.VerificationId, request.DetailsSource, request.OverrideReason, cancellationToken);
+        return result.Outcome switch
+        {
+            ExistingBvnOutcome.Verified => Ok(await ToDetailAsync(result.Client!, cancellationToken)),
+            ExistingBvnOutcome.AlreadyVerified => Problem(title: result.Error, statusCode: StatusCodes.Status409Conflict),
+            _ => Problem(title: result.Error, statusCode: StatusCodes.Status400BadRequest),
+        };
+    }
+
     /// <summary>Super admins clear a high-risk flag once they're satisfied the client is genuine; the client can then be approved.</summary>
     [HttpPost("{id:int}/mark-safe")]
     [Authorize(Policy = AuthPolicies.SuperAdmin)]
