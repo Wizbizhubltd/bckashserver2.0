@@ -1,5 +1,8 @@
 using BCKash.Application.Clients;
 using BCKash.Domain.Clients;
+using BCKash.Domain.Identity;
+using BCKash.Domain.Loans;
+using BCKash.Domain.Savings;
 using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -15,11 +18,13 @@ public class ClientService : IClientService
 
     private readonly BCKashDbContext _db;
     private readonly ICurrentUserContext _currentUser;
+    private readonly IClientAccess _access;
 
-    public ClientService(BCKashDbContext db, ICurrentUserContext currentUser)
+    public ClientService(BCKashDbContext db, ICurrentUserContext currentUser, IClientAccess access)
     {
         _db = db;
         _currentUser = currentUser;
+        _access = access;
     }
 
     public async Task<ClientWriteResult> CreateAsync(Client client, CancellationToken cancellationToken = default)
@@ -232,5 +237,83 @@ public class ClientService : IClientService
 
         await _db.SaveChangesAsync(cancellationToken);
         return new ClientWriteResult(ClientWriteOutcome.Success, client);
+    }
+
+    public async Task<ClientWriteResult> TransferOfficeAsync(int id, int officeId, int marketerId, CancellationToken cancellationToken = default)
+    {
+        var client = await _db.Clients.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null, cancellationToken);
+        if (client is null)
+        {
+            return new ClientWriteResult(ClientWriteOutcome.NotFound);
+        }
+
+        if (!await _db.Offices.AnyAsync(o => o.Id == officeId && o.Active && o.DeletedAt == null, cancellationToken))
+        {
+            return new ClientWriteResult(ClientWriteOutcome.OfficeNotFound);
+        }
+
+        var marketer = await _db.Users
+            .Where(u => u.Id == marketerId && !u.Blocked && _db.RoleUsers.Any(ru => ru.UserId == u.Id && ru.Role.Slug == UserTypeSlugs.Marketer))
+            .Select(u => new { u.Id, u.OfficeId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (marketer is null)
+        {
+            return new ClientWriteResult(ClientWriteOutcome.MarketerNotFound);
+        }
+
+        if (marketer.OfficeId != officeId)
+        {
+            return new ClientWriteResult(ClientWriteOutcome.MarketerInDifferentOffice);
+        }
+
+        if (client.OfficeId == officeId)
+        {
+            return new ClientWriteResult(ClientWriteOutcome.AlreadyInOffice);
+        }
+
+        if (await IsDefaulterAsync(id, cancellationToken))
+        {
+            return new ClientWriteResult(ClientWriteOutcome.Defaulter);
+        }
+
+        if (await _access.ActiveLoanAsync(id, cancellationToken) is not null)
+        {
+            return new ClientWriteResult(ClientWriteOutcome.HasActiveLoan);
+        }
+
+        client.OfficeId = officeId;
+        client.StaffId = marketerId;
+
+        // Groups belong to one office, so the client leaves theirs; the new office can put them in one of its own.
+        var now = DateTime.UtcNow;
+        foreach (var membership in await _db.GroupClients.Where(gc => gc.ClientId == id && gc.RemovedAt == null).ToListAsync(cancellationToken))
+        {
+            membership.RemovedAt = now;
+            membership.RemovedById = _currentUser.UserId;
+        }
+
+        // Open savings accounts move with the client; closed, declined and withdrawn ones stay as history.
+        var openSavings = await _db.Savings
+            .Where(s => s.ClientId == id && (s.Status == SavingsAccountStatus.Pending || s.Status == SavingsAccountStatus.Approved))
+            .ToListAsync(cancellationToken);
+        foreach (var account in openSavings)
+        {
+            account.OfficeId = officeId;
+            account.FieldOfficerId = marketerId;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return new ClientWriteResult(ClientWriteOutcome.Success, client);
+    }
+
+    /// <summary>A loan of theirs, or their share of a group loan, is non-performing or written off.</summary>
+    private Task<bool> IsDefaulterAsync(int clientId, CancellationToken cancellationToken)
+    {
+        var allocatedLoanIds = _db.GroupLoanAllocations.Where(a => a.ClientId == clientId && a.LoanId != null).Select(a => a.LoanId!.Value);
+        return _db.Loans.AnyAsync(
+            l => l.DeletedAt == null
+                && (l.ClientId == clientId || allocatedLoanIds.Contains(l.Id))
+                && (l.IsNpa || l.Status == LoanStatus.WrittenOff),
+            cancellationToken);
     }
 }

@@ -13,6 +13,7 @@ public static class OfficePortalModules
     public const string Staff = "staff";
     public const string Clients = "clients";
     public const string Loans = "loans";
+    public const string Funding = "funding";
 
     public static readonly IReadOnlyList<OfficePortalModule> All =
     [
@@ -20,20 +21,21 @@ public static class OfficePortalModules
         new(Staff, "Staff", "View, onboard and manage staff ranked below the user in their office(s)."),
         new(Clients, "Clients", "Clients and groups — register, edit and activate them."),
         new(Loans, "Loans", "Loan applications and the loans they become."),
+        new(Funding, "Office funding", "Acknowledge or dispute funding a super admin sends to the offices the user manages."),
     ];
 
     public static readonly IReadOnlySet<string> Slugs = All.Select(m => m.Slug).ToHashSet();
 
     /// <summary>
     /// What each role starts with: a marketer works clients and loans; a manager and a controller
-    /// also manage staff; a director additionally oversees the offices in their zones. Super admins
-    /// use the control portal, so they have none.
+    /// also manage staff, and a manager acknowledges their office's funding; a director additionally
+    /// oversees the offices in their zones. Super admins use the control portal, so they have none.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> Defaults = new Dictionary<string, string[]>
     {
         [UserTypeSlugs.Director] = [Offices, Staff, Clients, Loans],
         [UserTypeSlugs.Controller] = [Staff, Clients, Loans],
-        [UserTypeSlugs.Manager] = [Staff, Clients, Loans],
+        [UserTypeSlugs.Manager] = [Staff, Clients, Loans, Funding],
         [UserTypeSlugs.Marketer] = [Clients, Loans],
     };
 }

@@ -5,6 +5,7 @@ using BCKash.Domain.Clients;
 using BCKash.Domain.Groups;
 using BCKash.Domain.Identity;
 using BCKash.Domain.Loans;
+using BCKash.Domain.Savings;
 using BCKash.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,7 +13,7 @@ using Xunit;
 
 namespace BCKash.Api.IntegrationTests.Groups;
 
-/// <summary>The clients page's bulk actions: reassigning groups to a marketer, disabling/enabling groups, and moving clients between groups.</summary>
+/// <summary>The clients page's bulk actions: reassigning groups to a marketer, disabling/enabling groups, moving clients between groups, and moving clients to another office.</summary>
 public class GroupBulkActionsTests : IClassFixture<BCKashWebApplicationFactory>
 {
     private readonly BCKashWebApplicationFactory _factory;
@@ -72,6 +73,79 @@ public class GroupBulkActionsTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.Equal(marketerId, (await check.Groups.SingleAsync(g => g.Id == sameOfficeGroupId)).StaffId);
         Assert.Equal(marketerId, (await check.Clients.SingleAsync(c => c.Id == memberId)).StaffId);
         Assert.Null((await check.Groups.SingleAsync(g => g.Id == otherOfficeGroupId)).StaffId);
+    }
+
+    [Fact]
+    public async Task Moving_clients_to_another_office_hands_them_to_a_marketer_there_and_skips_unsettled_loans()
+    {
+        var http = await ClientAsync("client-bulk-transfer@bckash.test");
+        int newOfficeId, marketerId, movableId, borrowerId, alreadyThereId, savingsId, groupId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var oldOffice = await TestDataSeeder.SeedOfficeAsync(db);
+            var newOffice = await TestDataSeeder.SeedOfficeAsync(db);
+            marketerId = (await TestDataSeeder.SeedTypedUserAsync(db, "client-bulk-transfer-marketer@bckash.test", "Correct-Password1!", UserTypeSlugs.Marketer, newOffice.Id)).Id;
+
+            var group = NewGroup(oldOffice.Id);
+            var movable = NewClient(oldOffice.Id, "Movable");
+            var borrower = NewClient(oldOffice.Id, "Borrower");
+            var alreadyThere = NewClient(newOffice.Id, "Already");
+            db.AddRange(group, movable, borrower, alreadyThere);
+            await db.SaveChangesAsync();
+
+            db.GroupClients.Add(new GroupClient { GroupId = group.Id, ClientId = movable.Id, CreatedAt = DateTime.UtcNow });
+            var savings = new SavingsAccount { ClientId = movable.Id, OfficeId = oldOffice.Id, Status = SavingsAccountStatus.Approved };
+            db.Savings.Add(savings);
+            db.Loans.Add(new Loan { ClientId = borrower.Id, OfficeId = oldOffice.Id, ClientType = LoanClientType.Client, Status = LoanStatus.Disbursed, ApprovedAmount = 10_000 });
+            await db.SaveChangesAsync();
+            (newOfficeId, movableId, borrowerId, alreadyThereId, savingsId, groupId) = (newOffice.Id, movable.Id, borrower.Id, alreadyThere.Id, savings.Id, group.Id);
+        }
+
+        var result = await ReadAsync<BulkActionResponse>(await http.PostAsJsonAsync(
+            "/api/v1/clients/bulk/transfer", new BulkTransferClientsRequest([movableId, borrowerId, alreadyThereId], newOfficeId, marketerId), TestJson.Options));
+
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal("Has an unsettled loan or a pending loan application.", result.Skipped.Single(s => s.Id == borrowerId).Reason);
+        Assert.Equal("Already in this office.", result.Skipped.Single(s => s.Id == alreadyThereId).Reason);
+
+        using var verify = _factory.Services.CreateScope();
+        var check = verify.ServiceProvider.GetRequiredService<BCKashDbContext>();
+        var moved = await check.Clients.SingleAsync(c => c.Id == movableId);
+        Assert.Equal(newOfficeId, moved.OfficeId);
+        Assert.Equal(marketerId, moved.StaffId);
+        Assert.NotNull((await check.GroupClients.SingleAsync(gc => gc.GroupId == groupId && gc.ClientId == movableId)).RemovedAt);
+        var account = await check.Savings.SingleAsync(s => s.Id == savingsId);
+        Assert.Equal(newOfficeId, account.OfficeId);
+        Assert.Equal(marketerId, account.FieldOfficerId);
+        Assert.NotEqual(newOfficeId, (await check.Clients.SingleAsync(c => c.Id == borrowerId)).OfficeId);
+    }
+
+    [Fact]
+    public async Task Moving_clients_to_an_office_needs_a_marketer_who_works_there()
+    {
+        var http = await ClientAsync("client-bulk-transfer-mismatch@bckash.test");
+        int newOfficeId, marketerId, clientId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var oldOffice = await TestDataSeeder.SeedOfficeAsync(db);
+            var newOffice = await TestDataSeeder.SeedOfficeAsync(db);
+            marketerId = (await TestDataSeeder.SeedTypedUserAsync(db, "client-bulk-transfer-elsewhere@bckash.test", "Correct-Password1!", UserTypeSlugs.Marketer, oldOffice.Id)).Id;
+            var client = NewClient(oldOffice.Id, "Stays");
+            db.Clients.Add(client);
+            await db.SaveChangesAsync();
+            (newOfficeId, clientId) = (newOffice.Id, client.Id);
+        }
+
+        var result = await ReadAsync<BulkActionResponse>(await http.PostAsJsonAsync(
+            "/api/v1/clients/bulk/transfer", new BulkTransferClientsRequest([clientId], newOfficeId, marketerId), TestJson.Options));
+
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal("The marketer works in a different office.", Assert.Single(result.Skipped).Reason);
+        Assert.Equal(HttpStatusCode.BadRequest, (await http.PostAsJsonAsync("/api/v1/clients/bulk/transfer", new BulkTransferClientsRequest([], newOfficeId, marketerId), TestJson.Options)).StatusCode);
     }
 
     [Fact]

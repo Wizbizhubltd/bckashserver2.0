@@ -15,6 +15,24 @@ public enum ClientWriteOutcome
 
     /// <summary>Account-number generation exhausted its collision retries.</summary>
     AccountNumberGenerationFailed,
+
+    /// <summary>Transfer: the target office doesn't exist or is inactive.</summary>
+    OfficeNotFound,
+
+    /// <summary>Transfer: the marketer doesn't exist, is blocked, or isn't a marketer.</summary>
+    MarketerNotFound,
+
+    /// <summary>Transfer: the marketer works in a different office from the target.</summary>
+    MarketerInDifferentOffice,
+
+    /// <summary>Transfer: the client is already in the target office.</summary>
+    AlreadyInOffice,
+
+    /// <summary>Transfer: the client has a loan or loan application still open — see IClientAccess.ActiveLoanAsync.</summary>
+    HasActiveLoan,
+
+    /// <summary>Transfer: a loan of theirs, or their share of a group loan, is non-performing or written off.</summary>
+    Defaulter,
 }
 
 public record ClientWriteResult(ClientWriteOutcome Outcome, Client? Client = null);
@@ -42,4 +60,11 @@ public interface IClientService
     Task<ClientWriteResult> DeclineAsync(int id, string reason, CancellationToken cancellationToken = default);
 
     Task<ClientWriteResult> CloseAsync(int id, string reason, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves the client to <paramref name="officeId"/> under <paramref name="marketerId"/> (a marketer in that
+    /// office). They leave their current group, since groups belong to one office, and their open savings
+    /// accounts follow them. Clients with an open loan or loan application, and defaulters, stay put.
+    /// </summary>
+    Task<ClientWriteResult> TransferOfficeAsync(int id, int officeId, int marketerId, CancellationToken cancellationToken = default);
 }

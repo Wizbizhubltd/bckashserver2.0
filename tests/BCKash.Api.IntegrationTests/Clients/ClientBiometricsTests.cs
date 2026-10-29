@@ -77,6 +77,76 @@ public class ClientBiometricsTests : IClassFixture<BCKashWebApplicationFactory>
     }
 
     [Fact]
+    public async Task An_approved_client_never_enrolled_can_be_enrolled_by_any_manager_or_marketer_in_their_office()
+    {
+        var (clientId, _, controller, manager) = await SetUpAsync();
+
+        // While the client is still being onboarded, only their onboarder captures the face.
+        var pending = await manager.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options);
+        Assert.False(pending!.CanEnroll);
+
+        // An existing client approved before face capture came in.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var client = (await db.Clients.FindAsync(clientId))!;
+            client.Status = ClientStatus.Active;
+            client.ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-2));
+            await db.SaveChangesAsync();
+        }
+
+        var old = await manager.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options);
+        Assert.False(old!.Enrolled);
+        Assert.True(old.CanEnroll);
+        Assert.Equal(ClientBiometric.PassedStatus, (await CaptureAsync(manager, clientId, "enrollment", null, face: $"face-{clientId}")).Status);
+
+        // Controllers don't capture faces, and once enrolled the face is locked like any approved client's.
+        Assert.False((await controller.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
+        Assert.False((await manager.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
+    }
+
+    [Fact]
+    public async Task A_super_admin_can_begin_enrollment_for_an_approved_client_never_enrolled()
+    {
+        var (clientId, _, _, _) = await SetUpAsync();
+        var superAdmin = await AuthenticatedClientFactory.CreateSuperAdminAsync(_factory, $"bio-admin-{Guid.NewGuid():N}@bckash.test");
+
+        // A client still being onboarded is their onboarder's to capture.
+        Assert.False((await superAdmin.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var client = (await db.Clients.FindAsync(clientId))!;
+            client.Status = ClientStatus.Active;
+            client.ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-2));
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True((await superAdmin.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
+        Assert.Equal(ClientBiometric.PassedStatus, (await CaptureAsync(superAdmin, clientId, "enrollment", null, face: $"face-{clientId}")).Status);
+    }
+
+    [Fact]
+    public async Task A_super_admin_can_begin_enrollment_for_a_legacy_client_that_never_had_a_bvn_check()
+    {
+        var (clientId, _, _, _) = await SetUpAsync();
+        var superAdmin = await AuthenticatedClientFactory.CreateSuperAdminAsync(_factory, $"bio-admin-{Guid.NewGuid():N}@bckash.test");
+
+        // Imported still pending, by a staff member from the old system — but never through today's BVN-checked onboarding.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var client = (await db.Clients.FindAsync(clientId))!;
+            client.BvnVerifiedAt = null;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True((await superAdmin.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
+        Assert.Equal(ClientBiometric.PassedStatus, (await CaptureAsync(superAdmin, clientId, "enrollment", null, face: $"face-{clientId}")).Status);
+    }
+
+    [Fact]
     public async Task A_loan_is_disbursed_only_after_the_client_passes_a_face_match()
     {
         var (clientId, marketer, _, manager) = await SetUpAsync();
@@ -186,7 +256,7 @@ public class ClientBiometricsTests : IClassFixture<BCKashWebApplicationFactory>
             await TestDataSeeder.SeedTypedUserAsync(db, controllerEmail, Password, UserTypeSlugs.Controller, officeId);
             await TestDataSeeder.SeedTypedUserAsync(db, managerEmail, Password, UserTypeSlugs.Manager, officeId);
 
-            var client = new Client { FirstName = "Ada", LastName = "Obi", DisplayName = "Ada Obi", OfficeId = officeId, Status = ClientStatus.Pending, CreatedById = marketer.Id, CreatedAt = DateTime.UtcNow };
+            var client = new Client { FirstName = "Ada", LastName = "Obi", DisplayName = "Ada Obi", OfficeId = officeId, Status = ClientStatus.Pending, CreatedById = marketer.Id, CreatedAt = DateTime.UtcNow, BvnVerifiedAt = DateTime.UtcNow };
             db.Clients.Add(client);
             await db.SaveChangesAsync();
             clientId = client.Id;

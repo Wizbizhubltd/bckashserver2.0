@@ -191,3 +191,12 @@ public record ClientSavingsResponse(
 public record WithdrawSavingsRequest(string? Notes);
 
 public record SavingsWithdrawalResponse(decimal Payout, decimal Fee, ClientSavingsResponse Savings);
+
+/// <summary>Bulk action: moves the ticked clients to an office under a marketer who works there.</summary>
+public record BulkTransferClientsRequest(IReadOnlyList<int> ClientIds, int OfficeId, int MarketerId);
+
+/// <summary>Looks up the BVN of a client onboarded before BVN checks. <c>Bvn</c> is used only when the client has none on file.</summary>
+public record ExistingClientBvnCheckRequest(string? Bvn);
+
+/// <summary>Marks the client's BVN verified from that lookup — see IClientOnboardingService.VerifyExistingClientBvnAsync.</summary>
+public record VerifyExistingClientBvnRequest(int VerificationId, string? DetailsSource, string? OverrideReason);

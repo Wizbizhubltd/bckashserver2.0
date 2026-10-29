@@ -68,7 +68,7 @@ public class ClientBiometricsController : ControllerBase
         {
             blocked = "Face capture isn't configured on the server yet.";
         }
-        else if (!await _access.IsOnboarderAsync(client, cancellationToken))
+        else if (!await CanEnrollAsync(client, cancellationToken))
         {
             blocked = "Only the staff member who onboarded this client can capture their face.";
         }
@@ -178,14 +178,14 @@ public class ClientBiometricsController : ControllerBase
         return checks.Count > 0 && visible.Count == 0 ? NotFound() : Ok(visible);
     }
 
-    /// <summary>Enrolling is the onboarding staff member's job; a loan face match is for the roles ticked in Settings (see <see cref="CanRunLoanFaceMatchAsync"/>).</summary>
+    /// <summary>Enrolling is for the client's onboarder (see <see cref="CanEnrollAsync"/>); a loan face match is for the roles ticked in Settings (see <see cref="CanRunLoanFaceMatchAsync"/>).</summary>
     private async Task<IActionResult?> DenyAsync(Client client, string purpose, CancellationToken cancellationToken)
     {
         // The enrolled face has its own lock (the client's approval, even under an edit privilege), which
         // IClientBiometricsService enforces — here it only matters who is capturing.
         if (purpose == ClientBiometric.EnrollmentPurpose)
         {
-            return await _access.IsOnboarderAsync(client, cancellationToken)
+            return await CanEnrollAsync(client, cancellationToken)
                 ? null
                 : Problem(title: "Only the staff member who onboarded this client can capture their face.", statusCode: StatusCodes.Status403Forbidden);
         }
@@ -193,6 +193,32 @@ public class ClientBiometricsController : ControllerBase
         return await CanRunLoanFaceMatchAsync(cancellationToken)
             ? null
             : Problem(title: "Your role isn't allowed to run the face match before disbursement.", statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>
+    /// Enrolling is the onboarding staff member's job. The exception is a client who was on the books before face
+    /// capture came in (approved, or never BVN-checked — every client onboarded since has a BVN check) and has never
+    /// been enrolled: their onboarder may no longer be around, so any manager or marketer in the client's office
+    /// (which <see cref="IClientAccess.FindVisibleAsync"/> already checked), or a super admin from the control
+    /// portal, can begin their enrollment.
+    /// </summary>
+    private async Task<bool> CanEnrollAsync(Client client, CancellationToken cancellationToken)
+    {
+        if (await _access.IsOnboarderAsync(client, cancellationToken))
+        {
+            return true;
+        }
+
+        var userType = await _scope.GetUserTypeAsync(cancellationToken);
+        var existingClient = ClientDeletionRules.WasApproved(client) || client.BvnVerifiedAt is null;
+        if (!existingClient || !(UserTypeSlugs.CanCreateClients(userType) || userType == UserTypeSlugs.SuperAdmin))
+        {
+            return false;
+        }
+
+        return !await _db.ClientBiometrics.AnyAsync(
+            b => b.ClientId == client.Id && b.Purpose == ClientBiometric.EnrollmentPurpose && b.Status == ClientBiometric.PassedStatus,
+            cancellationToken);
     }
 
     /// <summary>
