@@ -18,7 +18,8 @@ public record OnboardClientRequest(
     string? Email,
     string? Phone,
     string Bvn,
-    int BvnVerificationId,
+    /// <summary>The BVN check's <c>VerificationId</c>. Required while BVN verification is mandatory; otherwise null onboards the client unverified.</summary>
+    int? BvnVerificationId,
     /// <summary>"bvn" or "client" — required only when the BVN lookup didn't match.</summary>
     string? DetailsSource,
     string? OverrideReason);
@@ -33,6 +34,9 @@ public record OnboardGroupDetailsRequest(string Name, string? Phone, string? Ema
 /// <c>MarketerId</c> as for <see cref="OnboardSingleClientRequest"/>.
 /// </summary>
 public record OnboardGroupRequest(int? OfficeId, OnboardGroupDetailsRequest Group, IReadOnlyList<OnboardClientRequest> Members, int? MarketerId = null);
+
+/// <summary>What the onboarding screens need to know before they start.</summary>
+public record OnboardingRulesResponse(bool BvnVerificationRequired);
 
 public record OnboardedClientResponse(int Id, string? AccountNo, string? DisplayName, bool IsHighRisk);
 

@@ -77,6 +77,9 @@ public class ClientBiometricsController : ControllerBase
             blocked = "The client is approved, so their enrolled face can't be replaced.";
         }
 
+        var required = await FaceCapturePolicy.IsRequiredAsync(_db, cancellationToken);
+        var canUploadPhoto = !required && client.BiometricEnrolledAt is null && await _access.DocumentationBlockAsync(client, cancellationToken) is null;
+
         return Ok(new ClientBiometricsResponse(
             _biometrics.IsConfigured,
             _biometrics.FaceMatchThreshold,
@@ -87,7 +90,9 @@ public class ClientBiometricsController : ControllerBase
             blocked is null,
             blocked,
             responses,
-            await FaceCapturePolicy.IsRequiredAsync(_db, cancellationToken)));
+            required,
+            !string.IsNullOrWhiteSpace(client.Picture),
+            canUploadPhoto));
     }
 
     [HttpPost("clients/{clientId:int}/biometrics/sessions")]
@@ -134,6 +139,16 @@ public class ClientBiometricsController : ControllerBase
         }
 
         var result = await _biometrics.CompleteAsync(client, sessionId, cancellationToken);
+        if (capture.Purpose == ClientBiometric.EnrollmentPurpose && result.Outcome is BiometricOutcome.Success or BiometricOutcome.Rejected)
+        {
+            await _access.RecordSuperAdminDocumentationAsync(
+                client,
+                "Biometrics",
+                result.Outcome == BiometricOutcome.Success && result.Capture!.Status == ClientBiometric.PassedStatus ? "Face enrolled" : "Face capture failed",
+                System.Text.Json.JsonSerializer.Serialize(new { captureId = result.Capture!.Id }),
+                cancellationToken);
+        }
+
         return result.Outcome is BiometricOutcome.Success or BiometricOutcome.Rejected
             ? Ok((await ToResponsesAsync([result.Capture!], cancellationToken)).Single())
             : ToProblem(result);
@@ -197,21 +212,31 @@ public class ClientBiometricsController : ControllerBase
 
     /// <summary>
     /// Enrolling is the onboarding staff member's job. The exception is a client who was on the books before face
-    /// capture came in (approved, or never BVN-checked — every client onboarded since has a BVN check) and has never
+    /// capture came in (approved, or never BVN-checked and not onboarded through the onboarding flow — which, with BVN
+    /// verification switched off, can now leave a new client unverified) and has never
     /// been enrolled: their onboarder may no longer be around, so any manager or marketer in the client's office
     /// (which <see cref="IClientAccess.FindVisibleAsync"/> already checked), or a super admin from the control
-    /// portal, can begin their enrollment.
+    /// portal, can begin their enrollment. A super admin can always capture, as the onboarder can.
     /// </summary>
     private async Task<bool> CanEnrollAsync(Client client, CancellationToken cancellationToken)
     {
-        if (await _access.IsOnboarderAsync(client, cancellationToken))
+        // A super admin can do whatever the onboarder can (the approved-client lock on the enrolled face
+        // still applies, in IClientBiometricsService); each capture is audited in Complete.
+        var userType = await _scope.GetUserTypeAsync(cancellationToken);
+        if (userType == UserTypeSlugs.SuperAdmin || await _access.IsOnboarderAsync(client, cancellationToken))
         {
             return true;
         }
 
-        var userType = await _scope.GetUserTypeAsync(cancellationToken);
-        var existingClient = ClientDeletionRules.WasApproved(client) || client.BvnVerifiedAt is null;
-        if (!existingClient || !(UserTypeSlugs.CanCreateClients(userType) || userType == UserTypeSlugs.SuperAdmin))
+        if (!UserTypeSlugs.CanCreateClients(userType))
+        {
+            return false;
+        }
+
+        var existingClient = ClientDeletionRules.WasApproved(client)
+            || (client.BvnVerifiedAt is null
+                && !await _db.AuditTrail.AnyAsync(a => a.Module == "Client" && a.Name == "Client onboarding" && a.EntityId == client.Id, cancellationToken));
+        if (!existingClient)
         {
             return false;
         }

@@ -30,7 +30,11 @@ public record ClientBiometricsResponse(
     string? EnrollBlockedReason,
     IReadOnlyList<FaceCaptureResponse> Captures,
     /// <summary>Whether face capture is mandatory (Settings → Loan): needed to approve the client and raise a loan.</summary>
-    bool Required = true);
+    bool Required = true,
+    /// <summary>Whether the client has a profile picture — their enrolled face, or a passport photo uploaded while face capture is off.</summary>
+    bool HasPhoto = false,
+    /// <summary>Whether the caller can upload a passport photo now: face capture is off, the client's face isn't enrolled, and they may document the client.</summary>
+    bool CanUploadPhoto = false);
 
 public record LivenessCredentialsResponse(string AccessKeyId, string SecretAccessKey, string SessionToken, DateTime Expiration);
 

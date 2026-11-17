@@ -38,7 +38,7 @@ public record OnboardClientInput(
     string? Email,
     string? Phone,
     string Bvn,
-    int BvnVerificationId,
+    int? BvnVerificationId,
     string? DetailsSource,
     string? OverrideReason);
 

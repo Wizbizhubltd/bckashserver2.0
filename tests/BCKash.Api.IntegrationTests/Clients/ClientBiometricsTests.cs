@@ -106,13 +106,23 @@ public class ClientBiometricsTests : IClassFixture<BCKashWebApplicationFactory>
     }
 
     [Fact]
+    public async Task While_face_capture_is_mandatory_no_passport_photo_can_be_uploaded()
+    {
+        var (clientId, marketer, _, _) = await SetUpAsync();
+        Assert.False((await marketer.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanUploadPhoto);
+
+        var form = new MultipartFormDataContent { { new ByteArrayContent(new byte[1024]), "file", "passport.jpg" } };
+        Assert.Equal(HttpStatusCode.Conflict, (await marketer.PostAsync($"/api/v1/clients/{clientId}/passport-photo", form)).StatusCode);
+    }
+
+    [Fact]
     public async Task A_super_admin_can_begin_enrollment_for_an_approved_client_never_enrolled()
     {
         var (clientId, _, _, _) = await SetUpAsync();
         var superAdmin = await AuthenticatedClientFactory.CreateSuperAdminAsync(_factory, $"bio-admin-{Guid.NewGuid():N}@bckash.test");
 
-        // A client still being onboarded is their onboarder's to capture.
-        Assert.False((await superAdmin.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
+        // A super admin can capture as the onboarder can — while the client is still being onboarded too.
+        Assert.True((await superAdmin.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -125,6 +135,10 @@ public class ClientBiometricsTests : IClassFixture<BCKashWebApplicationFactory>
 
         Assert.True((await superAdmin.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options))!.CanEnroll);
         Assert.Equal(ClientBiometric.PassedStatus, (await CaptureAsync(superAdmin, clientId, "enrollment", null, face: $"face-{clientId}")).Status);
+
+        // The capture is in the client's audit trail.
+        var audit = await superAdmin.GetFromJsonAsync<List<ClientAuditEntryResponse>>($"/api/v1/clients/{clientId}/audit", TestJson.Options);
+        Assert.Contains(audit!, e => e.Action == "Biometrics: Face enrolled (super admin)");
     }
 
     [Fact]

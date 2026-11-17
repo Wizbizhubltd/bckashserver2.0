@@ -548,7 +548,7 @@ public class ClientsController : ControllerBase
         return Ok(await ToDetailAsync(client, cancellationToken));
     }
 
-    /// <summary>The client's profile picture — the face captured when their biometrics were enrolled (see ClientBiometricsController).</summary>
+    /// <summary>The client's profile picture — the face captured when their biometrics were enrolled (see ClientBiometricsController), or a passport photo uploaded while face capture is off (see ClientPassportPhotoController).</summary>
     [HttpGet("{id:int}/photo")]
     public async Task<IActionResult> GetPhoto(int id, CancellationToken cancellationToken)
     {
@@ -859,7 +859,7 @@ public class ClientsController : ControllerBase
     /// <summary>The full record for the client page: who onboarded/approved them, their office, and what the viewer may do.</summary>
     private async Task<ClientResponse> ToDetailAsync(Client c, CancellationToken cancellationToken)
     {
-        var userIds = new[] { c.CreatedById, c.ActivatedById, c.StaffId }.Where(i => i.HasValue).Select(i => i!.Value).ToList();
+        var userIds = new[] { c.CreatedById, c.ActivatedById, c.StaffId, c.StaffAssignedById }.Where(i => i.HasValue).Select(i => i!.Value).ToList();
         var names = await _db.Users
             .Where(u => userIds.Contains(u.Id))
             .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
@@ -882,6 +882,8 @@ public class ClientsController : ControllerBase
             CurrentEditRequest = await ClientEditRequestsController.CurrentForAsync(_db, c, cancellationToken),
             ActiveLoan = await _access.ActiveLoanAsync(c.Id, cancellationToken),
             StaffName = c.StaffId.HasValue ? names.GetValueOrDefault(c.StaffId.Value) : null,
+            StaffAssignedByName = c.StaffAssignedById.HasValue ? names.GetValueOrDefault(c.StaffAssignedById.Value) : null,
+            StaffAssignedAt = c.StaffAssignedAt,
             LoanBlocker = BCKash.Infrastructure.Loans.LoanApplicantRules.ClientProblem(c, await BCKash.Infrastructure.Clients.FaceCapturePolicy.IsRequiredAsync(_db, cancellationToken)),
         };
     }

@@ -18,6 +18,8 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
         builder.Property(g => g.AccountNo).HasColumnName("account_no").HasMaxLength(191);
         builder.Property(g => g.ExternalId).HasColumnName("external_id").HasMaxLength(191);
         builder.Property(g => g.StaffId).HasColumnName("staff_id");
+        builder.Property(g => g.StaffAssignedById).HasColumnName("staff_assigned_by_id");
+        builder.Property(g => g.StaffAssignedAt).HasColumnName("staff_assigned_at");
         builder.Property(g => g.JoinedDate).HasColumnName("joined_date").HasColumnType("date");
         builder.Property(g => g.ActivatedDate).HasColumnName("activated_date").HasColumnType("date");
         builder.Property(g => g.ReactivatedDate).HasColumnName("reactivated_date").HasColumnType("date");

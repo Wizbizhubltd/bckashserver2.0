@@ -20,6 +20,10 @@ public class Group : IHasTimestamps, IAuditable
     public string? AccountNo { get; set; }
     public string? ExternalId { get; set; }
     public int? StaffId { get; set; }
+
+    /// <summary>Who last changed <see cref="StaffId"/> after the record was created, and when — null until it's reassigned. Stamped by StaffAssignmentInterceptor.</summary>
+    public int? StaffAssignedById { get; set; }
+    public DateTime? StaffAssignedAt { get; set; }
     public DateOnly? JoinedDate { get; set; }
     public DateOnly? ActivatedDate { get; set; }
     public DateOnly? ReactivatedDate { get; set; }

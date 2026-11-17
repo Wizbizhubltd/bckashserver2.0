@@ -339,12 +339,14 @@ public class ClientOnboardingService : IClientOnboardingService
         return (officeId, null, null);
     }
 
-    private sealed record PreparedMember(Client Client, BvnVerification Verification, IReadOnlyList<BvnFieldComparison> Comparisons);
+    /// <summary><c>Verification</c> is null for a client onboarded unverified (BVN verification switched off).</summary>
+    private sealed record PreparedMember(Client Client, BvnVerification? Verification, IReadOnlyList<BvnFieldComparison> Comparisons);
 
     private async Task<List<PreparedMember>> PrepareMembersAsync(IReadOnlyList<OnboardClientInput> members, Dictionary<string, string> errors, CancellationToken cancellationToken)
     {
         var prepared = new List<PreparedMember>();
-        var verificationIds = members.Select(m => m.BvnVerificationId).ToList();
+        var verificationRequired = await BvnVerificationPolicy.IsRequiredAsync(_db, cancellationToken);
+        var verificationIds = members.Where(m => m.BvnVerificationId.HasValue).Select(m => m.BvnVerificationId!.Value).ToList();
         var verifications = await _db.BvnVerifications.Where(v => verificationIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id, cancellationToken);
         var seenBvns = new HashSet<string>();
 
@@ -373,7 +375,22 @@ public class ClientOnboardingService : IClientOnboardingService
                 continue;
             }
 
-            if (!verifications.TryGetValue(member.BvnVerificationId, out var verification)
+            // With BVN verification switched off, a client sent without a check is onboarded unverified —
+            // with the details as entered — and can be verified later from their record.
+            if (!verificationRequired && member.BvnVerificationId is null)
+            {
+                if (await BvnInUseAsync(bvn, cancellationToken))
+                {
+                    errors[key] = "A client with this BVN is already on the platform.";
+                    continue;
+                }
+
+                prepared.Add(new PreparedMember(NewClient(firstName, middleName, lastName, member.Phone, member.Email, bvn), null, []));
+                continue;
+            }
+
+            if (member.BvnVerificationId is not { } verificationId
+                || !verifications.TryGetValue(verificationId, out var verification)
                 || verification.Bvn != bvn
                 || verification.ClientId.HasValue
                 || verification.CreatedAt < DateTime.UtcNow - ClientOnboardingRules.VerificationLifetime)
@@ -411,34 +428,47 @@ public class ClientOnboardingService : IClientOnboardingService
             }
 
             var useBvn = source == ClientOnboardingRules.DetailsFromBvn;
-            var client = new Client
-            {
-                FirstName = useBvn ? verification.FirstName ?? firstName : firstName,
-                MiddleName = useBvn ? verification.MiddleName ?? (matches ? middleName : null) : middleName,
-                LastName = useBvn ? verification.LastName ?? lastName : lastName,
-                Mobile = useBvn && !string.IsNullOrWhiteSpace(verification.Phone) ? verification.Phone : member.Phone,
-                Email = string.IsNullOrWhiteSpace(member.Email) ? null : member.Email.Trim(),
+            var client = NewClient(
+                useBvn ? verification.FirstName ?? firstName : firstName,
+                useBvn ? verification.MiddleName ?? (matches ? middleName : null) : middleName,
+                useBvn ? verification.LastName ?? lastName : lastName,
+                useBvn && !string.IsNullOrWhiteSpace(verification.Phone) ? verification.Phone : member.Phone,
+                member.Email,
+                bvn);
 
-                // The date of birth isn't asked for at onboarding; the BVN record's is the client's.
-                Dob = ClientOnboardingRules.ParseBvnBirthDate(verification.BirthDate, DateOnly.FromDateTime(DateTime.UtcNow)),
-                Bvn = bvn,
-                Status = ClientStatus.Pending,
-                ClientType = ClientType.Individual,
-                JoinedDate = DateOnly.FromDateTime(DateTime.UtcNow),
-                BvnVerifiedAt = verification.CreatedAt,
-                BvnDetailsSource = source,
-                IsHighRisk = !useBvn,
-                HighRiskReason = useBvn ? null : member.OverrideReason!.Trim(),
-                HighRiskFlaggedById = useBvn ? null : _currentUser.UserId,
-                HighRiskFlaggedAt = useBvn ? null : DateTime.UtcNow,
-                CreatedById = _currentUser.UserId,
-            };
-            client.DisplayName = string.Join(' ', new[] { client.FirstName, client.MiddleName, client.LastName }.Where(p => !string.IsNullOrWhiteSpace(p)));
-            client.FullName = client.DisplayName;
+            // The date of birth isn't asked for at onboarding; the BVN record's is the client's.
+            client.Dob = ClientOnboardingRules.ParseBvnBirthDate(verification.BirthDate, DateOnly.FromDateTime(DateTime.UtcNow));
+            client.BvnVerifiedAt = verification.CreatedAt;
+            client.BvnDetailsSource = source;
+            client.IsHighRisk = !useBvn;
+            client.HighRiskReason = useBvn ? null : member.OverrideReason!.Trim();
+            client.HighRiskFlaggedById = useBvn ? null : _currentUser.UserId;
+            client.HighRiskFlaggedAt = useBvn ? null : DateTime.UtcNow;
             prepared.Add(new PreparedMember(client, verification, comparisons));
         }
 
         return prepared;
+    }
+
+    /// <summary>A pending individual client with the given details — BVN not (yet) verified.</summary>
+    private Client NewClient(string firstName, string? middleName, string? lastName, string? phone, string? email, string bvn)
+    {
+        var client = new Client
+        {
+            FirstName = firstName,
+            MiddleName = middleName,
+            LastName = lastName,
+            Mobile = phone,
+            Email = string.IsNullOrWhiteSpace(email) ? null : email.Trim(),
+            Bvn = bvn,
+            Status = ClientStatus.Pending,
+            ClientType = ClientType.Individual,
+            JoinedDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            CreatedById = _currentUser.UserId,
+        };
+        client.DisplayName = string.Join(' ', new[] { client.FirstName, client.MiddleName, client.LastName }.Where(p => !string.IsNullOrWhiteSpace(p)));
+        client.FullName = client.DisplayName;
+        return client;
     }
 
     /// <summary>Null when an account number couldn't be generated (the caller rolls back).</summary>
@@ -455,18 +485,23 @@ public class ClientOnboardingService : IClientOnboardingService
                 return null;
             }
 
-            member.Verification.ClientId = member.Client.Id;
-            member.Verification.UpdatedAt = DateTime.UtcNow;
+            if (member.Verification is not null)
+            {
+                member.Verification.ClientId = member.Client.Id;
+                member.Verification.UpdatedAt = DateTime.UtcNow;
+            }
+
             _db.AuditTrail.Add(new AuditTrailEntry
             {
                 UserId = _currentUser.UserId,
                 OfficeId = officeId,
                 Module = "Client",
-                Action = member.Client.IsHighRisk ? "Onboarded (high risk)" : "Onboarded",
+                Action = member.Verification is null ? "Onboarded (BVN not verified)" : member.Client.IsHighRisk ? "Onboarded (high risk)" : "Onboarded",
                 Name = "Client onboarding",
                 EntityId = member.Client.Id,
                 Notes = JsonSerializer.Serialize(new
                 {
+                    bvnVerified = member.Verification is not null,
                     bvnDetailsSource = member.Client.BvnDetailsSource,
                     mismatches = member.Comparisons.Where(c => !c.Matches).Select(c => new { c.Field, c.Given, c.FromBvn }),
                     highRiskReason = member.Client.HighRiskReason,

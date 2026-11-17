@@ -19,6 +19,8 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
         builder.Property(c => c.OfficeId).HasColumnName("office_id");
         builder.Property(c => c.UserId).HasColumnName("user_id");
         builder.Property(c => c.StaffId).HasColumnName("staff_id");
+        builder.Property(c => c.StaffAssignedById).HasColumnName("staff_assigned_by_id");
+        builder.Property(c => c.StaffAssignedAt).HasColumnName("staff_assigned_at");
         builder.Property(c => c.ReferredById).HasColumnName("referred_by_id");
         builder.Property(c => c.AccountNo).HasColumnName("account_no").HasMaxLength(191);
         builder.Property(c => c.OldAccountNo).HasColumnName("old_account_no").HasMaxLength(191);

@@ -359,6 +359,47 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
         return await staff.PostAsync($"/api/v1/clients/{clientId}/documents", form);
     }
 
+    [Fact]
+    public async Task A_super_admin_documents_any_client_as_the_onboarder_can_and_every_change_is_audited()
+    {
+        var (clientId, _, controller) = await SetUpAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            // Approved: locked for the onboarder without an edit privilege, but not for a super admin.
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var client = await db.Clients.FindAsync(clientId);
+            client!.Status = ClientStatus.Active;
+            client.ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow);
+            await db.SaveChangesAsync();
+        }
+
+        var superAdmin = await AuthenticatedClientFactory.CreateSuperAdminAsync(_factory, $"doc-sa-{Guid.NewGuid():N}@bckash.test");
+        var detail = await superAdmin.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options);
+        Assert.True(detail!.Actions!.CanEditDetails);
+
+        var created = await superAdmin.PostAsJsonAsync($"/api/v1/clients/{clientId}/guarantors", new SaveClientContactRequest("Bola Ade", "08031234567", null, "12 Marina, Lagos", "Colleague", "Trader"));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var guarantor = (await created.Content.ReadFromJsonAsync<ClientContactResponse>(TestJson.Options))!;
+        Assert.True((await superAdmin.PutAsJsonAsync($"/api/v1/clients/{clientId}/guarantors/{guarantor.Id}",
+            new SaveClientContactRequest("Bola Adeyemi", "08031234567", null, "12 Marina, Lagos", "Colleague", "Trader"))).IsSuccessStatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await UploadAsync(superAdmin, clientId, "utility_bill", null, "0123456789", "bill.png", 1024)).StatusCode);
+        Assert.True((await superAdmin.PostAsJsonAsync($"/api/v1/clients/{clientId}/notes", new { notes = "Called the client." })).IsSuccessStatusCode);
+
+        // Others are still held to the onboarder rule.
+        Assert.Equal(HttpStatusCode.Forbidden, (await controller.PostAsJsonAsync($"/api/v1/clients/{clientId}/references",
+            new SaveClientContactRequest("Chidi Eze", "08035556666", null, "3 Broad St", "Friend", null))).StatusCode);
+
+        // A super admin's correction doesn't send the approved client back to pending.
+        detail = await superAdmin.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options);
+        Assert.Equal(ClientStatus.Active, detail!.Status);
+
+        var audit = await superAdmin.GetFromJsonAsync<List<ClientAuditEntryResponse>>($"/api/v1/clients/{clientId}/audit", TestJson.Options);
+        Assert.Contains(audit!, e => e.Action == "Guarantors: Added (super admin)");
+        Assert.Contains(audit!, e => e.Action == "Guarantors: Updated (super admin)" && e.Notes!.Contains(guarantor.Id.ToString()));
+        Assert.Contains(audit!, e => e.Action == "Documents: Added (super admin)");
+        Assert.Contains(audit!, e => e.Action == "Notes: Added (super admin)");
+    }
+
     private async Task<(int ClientId, HttpClient Marketer, HttpClient Controller)> SetUpAsync()
     {
         var marketerEmail = $"doc-marketer-{Guid.NewGuid():N}@bckash.test";

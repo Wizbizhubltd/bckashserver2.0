@@ -18,8 +18,9 @@ public record ClientActions(
 /// Who may see and work on a client. Visibility follows the office scope. Onboarding documentation
 /// (details, photo, documents, guarantors, references, next of kin) belongs to whoever onboarded the
 /// client, and locks once the client is approved — reopened only by an edit privilege a controller
-/// grants (see ClientEditRequest). Approving or declining belongs to controllers; clearing a
-/// high-risk flag to super admins.
+/// grants (see ClientEditRequest). A super admin can change any client's documentation from the
+/// control portal, approved or not, and each change is recorded in the audit trail. Approving or
+/// declining belongs to controllers; clearing a high-risk flag to super admins.
 /// </summary>
 public interface IClientAccess
 {
@@ -36,6 +37,13 @@ public interface IClientAccess
     /// assigned to: the one who documents them and asks for edit privilege.
     /// </summary>
     Task<bool> IsOnboarderAsync(Client client, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records a super admin's change to a client's documentation in the audit trail, against the client
+    /// (Module "Client", EntityId the client's id) — e.g. section "Guarantors", action "Added". Does
+    /// nothing for anyone else, whose documentation changes are the onboarder's own job.
+    /// </summary>
+    Task RecordSuperAdminDocumentationAsync(Client client, string section, string action, string? details = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Call after any change to an approved client's documentation under an edit privilege: the first

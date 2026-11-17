@@ -453,9 +453,13 @@ public class GroupsController : ControllerBase
         var pendingDeletion = await _db.DeletionRequests.AnyAsync(
             r => r.EntityType == DeletionRequest.GroupEntity && r.EntityId == id && r.Status == DeletionRequestStatus.Pending, cancellationToken);
         var userType = await _scope.GetUserTypeAsync(cancellationToken);
-        var createdByName = group.CreatedById.HasValue
-            ? await _db.Users.Where(u => u.Id == group.CreatedById).Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefaultAsync(cancellationToken)
-            : null;
+        var staffIds = new[] { group.CreatedById, group.StaffId, group.StaffAssignedById }.Where(i => i.HasValue).Select(i => i!.Value).ToList();
+        var staffNames = await _db.Users
+            .Where(u => staffIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}") ? u.Email : $"{u.FirstName} {u.LastName}".Trim(), cancellationToken);
+        string? NameOf(int? userId) => userId.HasValue ? staffNames.GetValueOrDefault(userId.Value) : null;
+        var createdByName = NameOf(group.CreatedById);
         var officeName = group.OfficeId.HasValue ? await _db.Offices.Where(o => o.Id == group.OfficeId).Select(o => o.Name).FirstOrDefaultAsync(cancellationToken) : null;
 
         return Ok(new GroupSummaryResponse(
@@ -471,7 +475,10 @@ public class GroupsController : ControllerBase
             PendingDeletionRequest: pendingDeletion,
             CreatedByName: string.IsNullOrWhiteSpace(createdByName) ? null : createdByName,
             OfficeName: officeName,
-            LoanRecords: loanRecords));
+            LoanRecords: loanRecords,
+            StaffName: NameOf(group.StaffId),
+            StaffAssignedByName: NameOf(group.StaffAssignedById),
+            StaffAssignedAt: group.StaffAssignedAt));
     }
 
     /// <summary>Deletes a group none of whose members has been approved. Its clients stay on the platform.</summary>

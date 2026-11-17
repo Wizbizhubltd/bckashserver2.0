@@ -21,6 +21,10 @@ public class Client : IHasTimestamps, ISoftDelete, IAuditable
     public int? OfficeId { get; set; }
     public int? UserId { get; set; }
     public int? StaffId { get; set; }
+
+    /// <summary>Who last changed <see cref="StaffId"/> after the record was created, and when — null until it's reassigned. Stamped by StaffAssignmentInterceptor.</summary>
+    public int? StaffAssignedById { get; set; }
+    public DateTime? StaffAssignedAt { get; set; }
     public int? ReferredById { get; set; }
     public string? AccountNo { get; set; }
     public string? OldAccountNo { get; set; }
