@@ -130,14 +130,16 @@ public class SettingsController : ControllerBase
     private static string? Normalize(string key, string? value) =>
         CompanyProfileKeys.All.Contains(key) || OverdueRuleKeys.All.Contains(key) || CurrencyDisplayKeys.All.Contains(key) || key == IOfficeFundService.RequireFundsSettingKey
         || key == LoanFaceMatchRoles.SettingKey || key == ISmsSwitch.SettingKey || ClientSavingsSettingKeys.All.Contains(key) || key == FaceCaptureRules.SettingKey
+        || key == BvnVerificationRules.SettingKey
             ? value?.Trim()
             : value;
 
-    /// <summary>Rules for the keys the system acts on: company profile, overdue &amp; penalty rules, currency display, office funds, loan face match roles, SMS sending.</summary>
+    /// <summary>Rules for the keys the system acts on: company profile, overdue &amp; penalty rules, currency display, office funds, loan face match roles, SMS sending, face capture and BVN verification.</summary>
     private static string? Validate(string key, string? value) =>
         CompanyProfileRules.Validate(key, value) ?? OverdueRuleKeys.Validate(key, value) ?? CurrencyDisplayKeys.Validate(key, value) ?? LoanFaceMatchRoles.Validate(key, value)
         ?? ClientSavingsSettingKeys.Validate(key, value)
         ?? FaceCaptureRules.Validate(key, value)
+        ?? BvnVerificationRules.Validate(key, value)
         ?? (key == IOfficeFundService.RequireFundsSettingKey && value?.Trim() is not ("0" or "1") ? "“Loans draw on office funds” must be switched on (1) or off (0)." : null)
         ?? (key == ISmsSwitch.SettingKey && value?.Trim() is not ("0" or "1") ? "“SMS sending” must be switched on (1) or off (0)." : null);
 }

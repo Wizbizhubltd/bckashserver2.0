@@ -25,6 +25,11 @@ public class ClientOnboardingController : ControllerBase
         _onboarding = onboarding;
     }
 
+    /// <summary>Whether onboarding needs each client's BVN verified (Settings → Customer Onboarding).</summary>
+    [HttpGet("rules")]
+    public async Task<ActionResult<OnboardingRulesResponse>> Rules([FromServices] BCKash.Infrastructure.Data.BCKashDbContext db, CancellationToken cancellationToken) =>
+        Ok(new OnboardingRulesResponse(await BCKash.Infrastructure.Clients.BvnVerificationPolicy.IsRequiredAsync(db, cancellationToken)));
+
     [HttpPost("bvn-check")]
     public async Task<ActionResult<BvnCheckResponse>> CheckBvn(BvnCheckRequest request, CancellationToken cancellationToken)
     {

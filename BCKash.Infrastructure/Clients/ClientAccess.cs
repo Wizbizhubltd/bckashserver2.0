@@ -50,6 +50,13 @@ public class ClientAccess : IClientAccess
 
     public async Task<string?> DocumentationBlockAsync(Client client, CancellationToken cancellationToken = default)
     {
+        // A super admin can do whatever the onboarder can, on any client — each change is audited
+        // (see RecordSuperAdminDocumentationAsync) and doesn't send an approved client back to pending.
+        if (await _scope.GetUserTypeAsync(cancellationToken) == UserTypeSlugs.SuperAdmin)
+        {
+            return null;
+        }
+
         if (!await IsOnboarderAsync(client, cancellationToken))
         {
             return "Only the staff member who onboarded this client can change their documentation.";
@@ -63,6 +70,28 @@ public class ClientAccess : IClientAccess
         return ClientDeletionRules.WasApproved(client) && client.EditPrivilegeRequestId is null
             ? "This client is approved, so their profile is locked. Request edit privilege from a controller to change it."
             : null;
+    }
+
+    public async Task RecordSuperAdminDocumentationAsync(Client client, string section, string action, string? details = null, CancellationToken cancellationToken = default)
+    {
+        if (await _scope.GetUserTypeAsync(cancellationToken) != UserTypeSlugs.SuperAdmin)
+        {
+            return;
+        }
+
+        _db.AuditTrail.Add(new AuditTrailEntry
+        {
+            UserId = _currentUser.UserId,
+            OfficeId = client.OfficeId,
+            Module = nameof(Client),
+            Action = $"{section}: {action} (super admin)",
+            Name = "Client documentation",
+            EntityId = client.Id,
+            Notes = details,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task NoteEditedAsync(int clientId, CancellationToken cancellationToken = default)

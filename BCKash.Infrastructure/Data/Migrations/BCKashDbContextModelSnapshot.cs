@@ -575,6 +575,14 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(191)")
                         .HasColumnName("region");
 
+                    b.Property<DateTime?>("StaffAssignedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("staff_assigned_at");
+
+                    b.Property<int?>("StaffAssignedById")
+                        .HasColumnType("int")
+                        .HasColumnName("staff_assigned_by_id");
+
                     b.Property<int?>("StaffId")
                         .HasColumnType("int")
                         .HasColumnName("staff_id");
@@ -2582,6 +2590,14 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasMaxLength(191)
                         .HasColumnType("varchar(191)")
                         .HasColumnName("region");
+
+                    b.Property<DateTime?>("StaffAssignedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("staff_assigned_at");
+
+                    b.Property<int?>("StaffAssignedById")
+                        .HasColumnType("int")
+                        .HasColumnName("staff_assigned_by_id");
 
                     b.Property<int?>("StaffId")
                         .HasColumnType("int")

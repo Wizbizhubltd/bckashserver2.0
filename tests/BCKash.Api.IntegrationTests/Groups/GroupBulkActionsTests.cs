@@ -73,6 +73,18 @@ public class GroupBulkActionsTests : IClassFixture<BCKashWebApplicationFactory>
         Assert.Equal(marketerId, (await check.Groups.SingleAsync(g => g.Id == sameOfficeGroupId)).StaffId);
         Assert.Equal(marketerId, (await check.Clients.SingleAsync(c => c.Id == memberId)).StaffId);
         Assert.Null((await check.Groups.SingleAsync(g => g.Id == otherOfficeGroupId)).StaffId);
+
+        // Who did the reassignment is recorded on the group and on the members that followed it.
+        var reassigned = await check.Groups.SingleAsync(g => g.Id == sameOfficeGroupId);
+        Assert.NotNull(reassigned.StaffAssignedById);
+        Assert.NotNull(reassigned.StaffAssignedAt);
+        Assert.Equal(reassigned.StaffAssignedById, (await check.Clients.SingleAsync(c => c.Id == memberId)).StaffAssignedById);
+        Assert.Null((await check.Groups.SingleAsync(g => g.Id == otherOfficeGroupId)).StaffAssignedById);
+
+        var summary = await ReadAsync<GroupSummaryResponse>(await http.GetAsync($"/api/v1/groups/{sameOfficeGroupId}/summary"));
+        Assert.NotNull(summary.StaffName);
+        Assert.NotNull(summary.StaffAssignedByName);
+        Assert.NotNull(summary.StaffAssignedAt);
     }
 
     [Fact]

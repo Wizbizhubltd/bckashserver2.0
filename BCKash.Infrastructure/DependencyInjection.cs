@@ -99,6 +99,7 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<IClientBiometricsService, ClientBiometricsService>();
 
+        services.AddScoped<StaffAssignmentInterceptor>();
         services.AddScoped<AuditSaveChangesInterceptor>();
 
         services.AddDbContext<BCKashDbContext>((sp, options) =>
@@ -136,6 +137,7 @@ public static class InfrastructureServiceCollectionExtensions
             }
 
             options.AddInterceptors(
+                sp.GetRequiredService<StaffAssignmentInterceptor>(),
                 sp.GetRequiredService<AuditSaveChangesInterceptor>(),
                 sp.GetRequiredService<SecondLevelCacheInterceptor>());
         });

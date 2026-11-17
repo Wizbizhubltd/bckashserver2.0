@@ -73,7 +73,12 @@ public record GroupSummaryResponse(
     bool PendingDeletionRequest,
     string? CreatedByName,
     string? OfficeName,
-    IReadOnlyList<GroupLoanRecordResponse> LoanRecords);
+    IReadOnlyList<GroupLoanRecordResponse> LoanRecords,
+    /// <summary>The marketer in charge of the group now.</summary>
+    string? StaffName = null,
+    /// <summary>Who last reassigned the group to another marketer, and when — null if never reassigned.</summary>
+    string? StaffAssignedByName = null,
+    DateTime? StaffAssignedAt = null);
 
 /// <summary>
 /// One loan or loan application on the group page: a member's own, their share of a group loan, or

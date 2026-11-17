@@ -43,6 +43,9 @@ public record ClientResponse(
     string? Nationality = null,
     /// <summary>The account officer (<c>StaffId</c>'s user), on the single-client read.</summary>
     string? StaffName = null,
+    /// <summary>Who last reassigned the client to another marketer, and when — null if never reassigned.</summary>
+    string? StaffAssignedByName = null,
+    DateTime? StaffAssignedAt = null,
     DateTime? BiometricEnrolledAt = null,
     /// <summary>Why a loan can't be raised for the client right now (pending, no face captured…) — null when it can. See LoanApplicantRules.</summary>
     string? LoanBlocker = null);

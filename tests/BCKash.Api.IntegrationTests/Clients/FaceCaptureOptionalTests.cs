@@ -64,6 +64,48 @@ public class FaceCaptureOptionalTests : IClassFixture<BCKashWebApplicationFactor
     }
 
     [Fact]
+    public async Task With_face_capture_optional_the_onboarder_uploads_a_passport_photo_for_the_record()
+    {
+        var marketerEmail = $"photo-marketer-{Guid.NewGuid():N}@bckash.test";
+        var otherEmail = $"photo-other-{Guid.NewGuid():N}@bckash.test";
+        int clientId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var officeId = (await TestDataSeeder.SeedOfficeAsync(db)).Id;
+            var marketer = await TestDataSeeder.SeedTypedUserAsync(db, marketerEmail, Password, UserTypeSlugs.Marketer, officeId);
+            await TestDataSeeder.SeedTypedUserAsync(db, otherEmail, Password, UserTypeSlugs.Marketer, officeId);
+            var client = new Client { FirstName = "Kemi", LastName = "Bello", DisplayName = "Kemi Bello", OfficeId = officeId, Status = ClientStatus.Pending, CreatedById = marketer.Id, CreatedAt = DateTime.UtcNow };
+            db.Clients.Add(client);
+            db.Settings.Add(new Setting { SettingKey = FaceCaptureRules.SettingKey, SettingValue = "0" });
+            await db.SaveChangesAsync();
+            clientId = client.Id;
+        }
+
+        var marketerHttp = await SignInAsync(marketerEmail);
+        Task<HttpResponseMessage> Upload(HttpClient http, string name, int size)
+        {
+            var form = new MultipartFormDataContent { { new ByteArrayContent(new byte[size]), "file", name } };
+            return http.PostAsync($"/api/v1/clients/{clientId}/passport-photo", form);
+        }
+
+        var before = await marketerHttp.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options);
+        Assert.True(before!.CanUploadPhoto);
+        Assert.False(before.HasPhoto);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await Upload(marketerHttp, "passport.gif", 1024)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Upload(marketerHttp, "passport.jpg", 2 * 1024 * 1024 + 1)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Upload(await SignInAsync(otherEmail), "passport.jpg", 1024)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Upload(marketerHttp, "passport.jpg", 1024)).StatusCode);
+
+        var after = await marketerHttp.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options);
+        Assert.True(after!.HasPhoto);
+        Assert.False(after.Enrolled);
+        Assert.True((await marketerHttp.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options))!.HasPhoto);
+        Assert.Equal(HttpStatusCode.OK, (await marketerHttp.GetAsync($"/api/v1/clients/{clientId}/photo")).StatusCode);
+    }
+
+    [Fact]
     public void Only_an_explicit_off_makes_face_capture_optional()
     {
         Assert.True(FaceCaptureRules.IsRequired(null));
