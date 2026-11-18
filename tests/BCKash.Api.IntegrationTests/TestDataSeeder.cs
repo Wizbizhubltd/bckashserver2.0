@@ -112,6 +112,17 @@ public static class TestDataSeeder
     }
 
     /// <summary>What a client needs before a controller can approve them: 2 guarantors, 1 reference and an enrolled face.</summary>
+    /// <summary>A relationship type (Sister, Friend…) for next-of-kin records, which must name one.</summary>
+    public static async Task<int> SeedRelationshipAsync(BCKashWebApplicationFactory factory, string name = "Sister")
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+        var relationship = new ClientRelationship { Name = name, CreatedAt = DateTime.UtcNow };
+        db.ClientRelationships.Add(relationship);
+        await db.SaveChangesAsync();
+        return relationship.Id;
+    }
+
     public static async Task SeedApprovalRequirementsAsync(BCKashDbContext db, int clientId)
     {
         (await db.Clients.FindAsync(clientId))!.BiometricEnrolledAt = DateTime.UtcNow;
