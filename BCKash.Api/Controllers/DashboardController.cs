@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
 using BCKash.Api.Contracts;
 using BCKash.Application.Identity;
 using BCKash.Application.Loans;
@@ -10,8 +12,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
-using System.Collections.Concurrent;
-using System.Text.Json;
 
 namespace BCKash.Api.Controllers;
 

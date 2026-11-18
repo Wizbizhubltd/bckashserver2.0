@@ -414,8 +414,15 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
             // Created by someone else under the old system, approved long ago, never documented.
             var client = new Client
             {
-                FirstName = "Old", LastName = "Timer", DisplayName = "Old Timer", OfficeId = officeId, Status = ClientStatus.Active,
-                ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-3)), CreatedById = formerStaff.Id, StaffId = assigned.Id, CreatedAt = DateTime.UtcNow.AddYears(-3),
+                FirstName = "Old",
+                LastName = "Timer",
+                DisplayName = "Old Timer",
+                OfficeId = officeId,
+                Status = ClientStatus.Active,
+                ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-3)),
+                CreatedById = formerStaff.Id,
+                StaffId = assigned.Id,
+                CreatedAt = DateTime.UtcNow.AddYears(-3),
             };
             db.Clients.Add(client);
             await db.SaveChangesAsync();
@@ -477,8 +484,14 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
             (await db.Clients.FindAsync(clientId))!.Picture = "uploads/legacy/never-migrated-passport.jpg";
             db.ClientContacts.Add(new ClientContact
             {
-                ClientId = clientId, Kind = ClientContact.GuarantorKind, FullName = "Old Guarantor", Phone = "08031234567",
-                Address = "12 Marina, Lagos", Relationship = "Friend", Photo = "uploads/legacy/never-migrated-guarantor.jpg", CreatedAt = DateTime.UtcNow,
+                ClientId = clientId,
+                Kind = ClientContact.GuarantorKind,
+                FullName = "Old Guarantor",
+                Phone = "08031234567",
+                Address = "12 Marina, Lagos",
+                Relationship = "Friend",
+                Photo = "uploads/legacy/never-migrated-guarantor.jpg",
+                CreatedAt = DateTime.UtcNow,
             });
             await db.SaveChangesAsync();
         }
