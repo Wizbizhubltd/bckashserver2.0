@@ -187,7 +187,7 @@ public class ClientOnboardingTests : IClassFixture<BCKashWebApplicationFactory>
         var clientId = (await (await marketer.PostAsJsonAsync("/api/v1/onboarding/clients", new OnboardSingleClientRequest(
             null, new OnboardClientRequest("Ada Obi", null, null, bvn, check.VerificationId, null, null)))).Content.ReadFromJsonAsync<OnboardingResponse>(TestJson.Options))!.Clients.Single().Id;
 
-        var nextOfKin = new { FirstName = "Chidi", LastName = "Obi", RelationshipId = (int?)null };
+        var nextOfKin = new { FirstName = "Chidi", LastName = "Obi", ClientRelationshipId = await TestDataSeeder.SeedRelationshipAsync(_factory) };
         Assert.Equal(HttpStatusCode.Forbidden, (await otherMarketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/next-of-kin", nextOfKin)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await otherMarketer.GetAsync($"/api/v1/clients/{clientId}/next-of-kin")).StatusCode);
 

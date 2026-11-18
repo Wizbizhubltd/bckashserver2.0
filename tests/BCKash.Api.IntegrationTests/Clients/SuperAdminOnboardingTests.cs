@@ -62,7 +62,7 @@ public class SuperAdminOnboardingTests : IClassFixture<BCKashWebApplicationFacto
 
         var asMarketer = await marketer.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options);
         Assert.True(asMarketer!.Actions!.CanEditDetails);
-        var nextOfKin = new { FirstName = "Chidi", LastName = "Obi", RelationshipId = (int?)null };
+        var nextOfKin = new { FirstName = "Chidi", LastName = "Obi", ClientRelationshipId = await TestDataSeeder.SeedRelationshipAsync(_factory) };
         Assert.True((await marketer.PostAsJsonAsync($"/api/v1/clients/{clientId}/next-of-kin", nextOfKin)).IsSuccessStatusCode);
     }
 

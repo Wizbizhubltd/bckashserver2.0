@@ -51,6 +51,11 @@ public class ClientNextOfKinController : ControllerBase
             return NotFound();
         }
 
+        if (await ValidateAsync(request, cancellationToken) is { } problem)
+        {
+            return Problem(title: problem, statusCode: StatusCodes.Status400BadRequest);
+        }
+
         var item = new ClientNextOfKin
         {
             ClientId = clientId,
@@ -86,6 +91,11 @@ public class ClientNextOfKinController : ControllerBase
             return NotFound();
         }
 
+        if (await ValidateAsync(request, cancellationToken) is { } problem)
+        {
+            return Problem(title: problem, statusCode: StatusCodes.Status400BadRequest);
+        }
+
         item.ClientRelationshipId = request.ClientRelationshipId;
         item.Qualification = request.Qualification;
         item.FirstName = request.FirstName;
@@ -119,6 +129,41 @@ public class ClientNextOfKinController : ControllerBase
         _db.ClientNextOfKin.Remove(item);
         await _db.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    /// <summary>
+    /// What a next of kin needs before it's saved. Without these checks a relationship id that isn't one
+    /// of the configured relationship types failed the save with a database error (HTTP 500).
+    /// </summary>
+    private async Task<string?> ValidateAsync(SaveClientNextOfKinRequest request, CancellationToken cancellationToken)
+    {
+        if (request.ClientRelationshipId is not { } relationshipId)
+        {
+            return "Choose how they're related to the client.";
+        }
+
+        if (!await _db.ClientRelationships.AnyAsync(r => r.Id == relationshipId, cancellationToken))
+        {
+            return "That relationship type doesn't exist — choose one from the list.";
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+        {
+            return "Enter the next of kin's first and last name.";
+        }
+
+        var mobileDigits = new string((request.Mobile ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (!string.IsNullOrWhiteSpace(request.Mobile) && mobileDigits.Length != 11 && !(mobileDigits.Length == 13 && mobileDigits.StartsWith("234", StringComparison.Ordinal)))
+        {
+            return "Enter an 11-digit phone number, e.g. 08031234567.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Email) && !request.Email.Contains('@'))
+        {
+            return "Enter a valid email address.";
+        }
+
+        return null;
     }
 
     private static ClientNextOfKinResponse ToResponse(ClientNextOfKin k) => new(
