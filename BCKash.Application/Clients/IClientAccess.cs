@@ -12,7 +12,10 @@ public record ClientActions(
     bool CanMarkSafe,
     bool CanRequestEdit,
     bool EditPrivilegeOpen,
-    bool CanReviewEditRequests);
+    bool CanReviewEditRequests,
+    // Worked out on the way to the flags above; carried along so the client page doesn't query them again.
+    IReadOnlyList<string>? ApprovalBlockers = null,
+    bool PendingDeletionRequest = false);
 
 /// <summary>
 /// Who may see and work on a client. Visibility follows the office scope. Onboarding documentation

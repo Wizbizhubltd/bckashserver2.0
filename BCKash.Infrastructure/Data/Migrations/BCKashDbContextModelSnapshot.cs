@@ -642,6 +642,14 @@ namespace BCKash.Infrastructure.Data.Migrations
 
                     b.HasIndex("LastName", "FirstName");
 
+                    b.HasIndex("DisplayName");
+
+                    b.HasIndex("FirstName");
+
+                    b.HasIndex("MiddleName");
+
+                    b.HasIndex("OfficeId", "CreatedAt");
+
                     b.ToTable("clients", (string)null);
                 });
 
@@ -2867,6 +2875,10 @@ namespace BCKash.Infrastructure.Data.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("expires_at_utc");
 
+                    b.Property<int?>("PreviousOtpId")
+                        .HasColumnType("int")
+                        .HasColumnName("previous_otp_id");
+
                     b.Property<int>("UserId")
                         .HasColumnType("int")
                         .HasColumnName("user_id");
@@ -4094,6 +4106,8 @@ namespace BCKash.Infrastructure.Data.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("OfficeId", "Status");
+
                     b.ToTable("loans", (string)null);
                 });
 
@@ -5297,6 +5311,8 @@ namespace BCKash.Infrastructure.Data.Migrations
                     b.HasIndex("Status");
 
                     b.HasIndex("TransactionType", "Date");
+
+                    b.HasIndex("OfficeId");
 
                     b.ToTable("loan_transactions", (string)null);
                 });

@@ -1,4 +1,5 @@
 using BCKash.Application.Clients;
+using BCKash.Application.Files;
 using BCKash.Application.Identity;
 using BCKash.Domain.Clients;
 using BCKash.Domain.Identity;
@@ -15,12 +16,14 @@ public class ClientAccess : IClientAccess
     private readonly BCKashDbContext _db;
     private readonly IOfficeScope _scope;
     private readonly ICurrentUserContext _currentUser;
+    private readonly IFileStorageService _files;
 
-    public ClientAccess(BCKashDbContext db, IOfficeScope scope, ICurrentUserContext currentUser)
+    public ClientAccess(BCKashDbContext db, IOfficeScope scope, ICurrentUserContext currentUser, IFileStorageService files)
     {
         _db = db;
         _scope = scope;
         _currentUser = currentUser;
+        _files = files;
     }
 
     public async Task<Client?> FindVisibleAsync(int clientId, CancellationToken cancellationToken = default)
@@ -67,9 +70,61 @@ public class ClientAccess : IClientAccess
             return null;
         }
 
-        return ClientDeletionRules.WasApproved(client) && client.EditPrivilegeRequestId is null
-            ? "This client is approved, so their profile is locked. Request edit privilege from a controller to change it."
-            : null;
+        if (!ClientDeletionRules.WasApproved(client) || client.EditPrivilegeRequestId is not null)
+        {
+            return null;
+        }
+
+        return await IsAwaitingBackfillAsync(client, cancellationToken)
+            ? null
+            : "This client is approved, so their profile is locked. Request edit privilege from a controller to change it.";
+    }
+
+    /// <summary>
+    /// A client from before the onboarding flow (no "Client onboarding" audit entry) was approved
+    /// without the documentation the flow now collects. Until that's caught up — at least one
+    /// document plus the minimum guarantors and references — the staff they're assigned to can fill
+    /// it in without an edit privilege, and doing so doesn't send the client back to pending. After
+    /// that the usual approved-client lock applies.
+    /// </summary>
+    private async Task<bool> IsAwaitingBackfillAsync(Client client, CancellationToken cancellationToken)
+    {
+        var onboardedThroughTheFlow = await _db.AuditTrail.AnyAsync(
+            a => a.Module == nameof(Client) && a.Name == "Client onboarding" && a.EntityId == client.Id, cancellationToken);
+        if (onboardedThroughTheFlow)
+        {
+            return false;
+        }
+
+        // Only documents whose file is actually in storage — many legacy rows point at files that
+        // were never carried over, and those don't count as documentation.
+        var locations = await _db.Documents
+            .Where(d => d.Type == ReferenceEntityType.Client && d.RecordId == client.Id && d.Location != null)
+            .Select(d => d.Location)
+            .ToListAsync(cancellationToken);
+        var hasDocument = false;
+        foreach (var location in locations)
+        {
+            if (await _files.ExistsAsync(location, cancellationToken))
+            {
+                hasDocument = true;
+                break;
+            }
+        }
+
+        if (!hasDocument)
+        {
+            return true;
+        }
+
+        var counts = await _db.ClientContacts
+            .Where(c => c.ClientId == client.Id)
+            .GroupBy(c => c.Kind)
+            .Select(g => new { Kind = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Kind, x => x.Count, cancellationToken);
+
+        return counts.GetValueOrDefault(ClientContact.GuarantorKind) < ClientContact.MinimumGuarantors
+            || counts.GetValueOrDefault(ClientContact.ReferenceKind) < ClientContact.MinimumReferences;
     }
 
     public async Task RecordSuperAdminDocumentationAsync(Client client, string section, string action, string? details = null, CancellationToken cancellationToken = default)
@@ -151,10 +206,12 @@ public class ClientAccess : IClientAccess
             CanDelete: (canDocument || canApprove) && ClientDeletionRules.CanDeleteDirectly(client),
             CanRequestDeletion: userType != UserTypeSlugs.SuperAdmin && ClientDeletionRules.WasApproved(client) && !pendingRequest,
             CanMarkSafe: userType == UserTypeSlugs.SuperAdmin && client.IsHighRisk,
-            CanRequestEdit: isOnboarder && ClientDeletionRules.WasApproved(client) && client.EditPrivilegeRequestId is null && !pendingEditRequest
+            CanRequestEdit: isOnboarder && !canDocument && ClientDeletionRules.WasApproved(client) && client.EditPrivilegeRequestId is null && !pendingEditRequest
                 && client.Status is ClientStatus.Active or ClientStatus.Inactive,
             EditPrivilegeOpen: client.EditPrivilegeRequestId is not null,
-            CanReviewEditRequests: UserTypeSlugs.CanReviewEditRequests(userType) && pendingEditRequest);
+            CanReviewEditRequests: UserTypeSlugs.CanReviewEditRequests(userType) && pendingEditRequest,
+            ApprovalBlockers: blockers,
+            PendingDeletionRequest: pendingRequest);
     }
 
     // A List so EF can translate Contains (array.Contains binds to the span overload).

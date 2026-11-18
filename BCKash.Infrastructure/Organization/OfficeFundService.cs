@@ -239,7 +239,7 @@ public class OfficeFundService : IOfficeFundService
         reason = reason?.Trim();
         if (string.IsNullOrEmpty(reason) || reason.Length < 10) return Invalid<OfficeFunding>("Explain why you're disputing this funding (at least 10 characters).");
         if (statement is null || statement.Length == 0) return Invalid<OfficeFunding>("Attach the office's bank statement.");
-        if (statement.Length > IOfficeFundService.MaxStatementBytes) return Invalid<OfficeFunding>("The bank statement must be 10 MB or smaller.");
+        if (statement.Length > IOfficeFundService.MaxStatementBytes) return Invalid<OfficeFunding>("The bank statement must be 2 MB or smaller.");
         var extension = Path.GetExtension(statement.FileName).ToLowerInvariant();
         if (!IOfficeFundService.StatementExtensions.Contains(extension)) return Invalid<OfficeFunding>("The bank statement must be a PDF, JPG or PNG.");
 

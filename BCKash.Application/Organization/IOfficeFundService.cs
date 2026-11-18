@@ -43,7 +43,7 @@ public record DisputeUpload(Stream Content, string FileName, long Length);
 public interface IOfficeFundService
 {
     public const string RequireFundsSettingKey = "loan_requires_office_funds";
-    public const long MaxStatementBytes = 10 * 1024 * 1024;
+    public const long MaxStatementBytes = 2 * 1024 * 1024;
     public static readonly string[] StatementExtensions = [".pdf", ".png", ".jpg", ".jpeg"];
 
     Task<bool> LoansRequireFundsAsync(CancellationToken cancellationToken = default);

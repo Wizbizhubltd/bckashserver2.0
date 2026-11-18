@@ -123,6 +123,15 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
         builder.HasIndex(c => c.StaffId);
         builder.HasIndex(c => new { c.LastName, c.FirstName });
 
+        // Client search matches the start of each of these (see ClientsController.ApplySearch), so
+        // each needs its own index for the search to be an index lookup rather than a table scan.
+        builder.HasIndex(c => c.FirstName);
+        builder.HasIndex(c => c.MiddleName);
+        builder.HasIndex(c => c.DisplayName);
+
+        // The client list is newest first within an office (the office portal's main screen).
+        builder.HasIndex(c => new { c.OfficeId, c.CreatedAt });
+
         builder.HasOne(c => c.Office)
             .WithMany()
             .HasForeignKey(c => c.OfficeId)

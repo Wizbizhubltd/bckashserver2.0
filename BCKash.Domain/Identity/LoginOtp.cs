@@ -17,5 +17,12 @@ public class LoginOtp
     public DateTime? ConsumedAtUtc { get; set; }
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>
+    /// The still-valid code this one was sent after (a "resend", or a repeated password-reset request).
+    /// That earlier code keeps working until it expires, so an SMS that arrives late — after the user
+    /// already asked for another — doesn't fail as a wrong code.
+    /// </summary>
+    public int? PreviousOtpId { get; set; }
+
     public User User { get; set; } = null!;
 }

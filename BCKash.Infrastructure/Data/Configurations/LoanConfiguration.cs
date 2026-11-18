@@ -186,6 +186,10 @@ public class LoanConfiguration : IEntityTypeConfiguration<Loan>
         builder.HasIndex(l => l.ClientId);
         builder.HasIndex(l => l.Status);
 
+        // Office staff only ever see their own office's loans (dashboard, loan lists, late loans), so
+        // nearly every office-portal loan query filters on office first.
+        builder.HasIndex(l => new { l.OfficeId, l.Status });
+
         builder.HasOne(l => l.LoanProduct)
             .WithMany(p => p.Loans)
             .HasForeignKey(l => l.LoanProductId)

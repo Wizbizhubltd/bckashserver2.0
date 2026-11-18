@@ -9,6 +9,9 @@ using BCKash.Infrastructure.Data;
 using BCKash.SharedKernel;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.ResponseCompression;
+using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -25,6 +28,14 @@ catch (FileNotFoundException)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+// The EF second-level cache talks to Redis synchronously (EFCoreSecondLevelCacheInterceptor's
+// provider API is sync), so every query briefly blocks a thread-pool thread. The pool only adds
+// threads slowly once its minimum is used up, so under a burst of staff requests they queued behind
+// each other with CPU to spare. Starting with more threads available removes that queue.
+var minWorkerThreads = builder.Configuration.GetValue("ThreadPool:MinWorkerThreads", 200);
+ThreadPool.GetMinThreads(out var currentWorkers, out var currentIo);
+ThreadPool.SetMinThreads(Math.Max(minWorkerThreads, currentWorkers), Math.Max(minWorkerThreads, currentIo));
 
 var jwtSigningKey = builder.Configuration["Jwt:SigningKey"];
 if (string.IsNullOrWhiteSpace(jwtSigningKey))
@@ -106,11 +117,48 @@ builder.Services
         };
     });
 
+// Staff work from all over the country, often on mobile data: compressing JSON cuts list and
+// detail responses to a fraction of their size. Files (images, PDFs) are already compressed and
+// aren't in the MIME list, so downloads pass through untouched.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(["application/problem+json"]);
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+
+// Behind a reverse proxy (nginx, a load balancer, Cloudflare) every request arrives from the proxy's
+// address, so the per-IP sign-in limit would treat all staff as one visitor. With
+// ForwardedHeaders:Enabled=true the API takes the caller's address from X-Forwarded-For instead.
+// Only switch it on when the API is reachable solely through that proxy — otherwise anyone could
+// send a fake X-Forwarded-For.
+var trustForwardedHeaders = builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled");
+if (trustForwardedHeaders)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = builder.Configuration.GetValue<int?>("ForwardedHeaders:ForwardLimit") ?? 1;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
 builder.Services.AddAuthorization(options => options.AddBCKashPolicies());
 
 var app = builder.Build();
+
+if (trustForwardedHeaders)
+{
+    app.UseForwardedHeaders();
+}
+
+app.UseResponseCompression();
 
 // Applies any pending EF Core migrations on startup — idempotent, so it's a no-op once the DB
 // is up to date. Without this, a fresh database (e.g. the first time a docker-composed MySQL

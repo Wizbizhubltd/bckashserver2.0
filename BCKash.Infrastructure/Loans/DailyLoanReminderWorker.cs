@@ -1,4 +1,5 @@
 using BCKash.Application.Loans;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,31 +8,30 @@ namespace BCKash.Infrastructure.Loans;
 
 /// <summary>
 /// Sends the customers' repayment reminders (<see cref="ILoanNotificationService.SendDueRemindersAsync"/>)
-/// shortly after start-up and then daily. Each reminder goes once, so restarts or a manual
+/// daily at a fixed time in Nigeria (Jobs:ReminderRunTime, default 07:00 — customers get them in the morning, before the office portal's busy hours). Each reminder goes once, so restarts or a manual
 /// POST /loans/reminders/run-due never send it twice.
 /// </summary>
 public sealed class DailyLoanReminderWorker : BackgroundService
 {
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(3);
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DailyLoanReminderWorker> _logger;
+    private readonly TimeOnly _runAt;
 
-    public DailyLoanReminderWorker(IServiceScopeFactory scopeFactory, ILogger<DailyLoanReminderWorker> logger)
+    public DailyLoanReminderWorker(IServiceScopeFactory scopeFactory, ILogger<DailyLoanReminderWorker> logger, IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        // Jobs:ReminderRunTime ("HH:mm", Nigerian time).
+        _runAt = DailyRunSchedule.Parse(configuration["Jobs:ReminderRunTime"], new TimeOnly(07, 0));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await Task.Delay(StartupDelay, stoppingToken);
-            using var timer = new PeriodicTimer(Interval);
-            do
+            while (!stoppingToken.IsCancellationRequested)
             {
+                await Task.Delay(DailyRunSchedule.Until(_runAt, DateTime.UtcNow), stoppingToken);
                 try
                 {
                     using var scope = _scopeFactory.CreateScope();
@@ -46,7 +46,6 @@ public sealed class DailyLoanReminderWorker : BackgroundService
                     _logger.LogError(ex, "Loan reminder run failed.");
                 }
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException)
         {

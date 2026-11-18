@@ -45,9 +45,8 @@ public class ClientsController : ControllerBase
     }
 
     /// <summary>
-    /// FR-CLI-5's search/filter screen, paginated per NFR-3. <paramref name="search"/> matches
-    /// FirstName/MiddleName/LastName/DisplayName — not FullName, a legacy denormalized
-    /// concatenation that isn't kept authoritative by anything in this phase — or a BVN prefix.
+    /// FR-CLI-5's search/filter screen, paginated per NFR-3. <paramref name="search"/> is split into
+    /// words and every word must match the client somewhere — see <see cref="ApplySearch"/>.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<PagedResult<ClientListItemResponse>>> List(
@@ -71,13 +70,7 @@ public class ClientsController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var pattern = $"%{search}%";
-            query = query.Where(c =>
-                EF.Functions.Like(c.FirstName, pattern) ||
-                EF.Functions.Like(c.MiddleName, pattern) ||
-                EF.Functions.Like(c.LastName, pattern) ||
-                EF.Functions.Like(c.DisplayName, pattern) ||
-                (c.Bvn != null && c.Bvn.StartsWith(search)));
+            query = ApplySearch(query, search);
         }
 
         if (!string.IsNullOrWhiteSpace(accountNo))
@@ -866,19 +859,19 @@ public class ClientsController : ControllerBase
             .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}") ? u.Email : $"{u.FirstName} {u.LastName}".Trim(), cancellationToken);
         var officeName = c.OfficeId.HasValue ? await _db.Offices.Where(o => o.Id == c.OfficeId).Select(o => o.Name).FirstOrDefaultAsync(cancellationToken) : null;
         var actions = await _access.ActionsForAsync(c, cancellationToken);
-        var pendingDeletion = await _db.DeletionRequests.AnyAsync(
-            r => r.EntityType == DeletionRequest.ClientEntity && r.EntityId == c.Id && r.Status == DeletionRequestStatus.Pending, cancellationToken);
 
         return ToResponse(c) with
         {
+            // A legacy picture path whose file never made it into storage counts as no photo.
+            HasPhoto = await _files.ExistsAsync(c.Picture, cancellationToken),
             CreatedByName = c.CreatedById.HasValue ? names.GetValueOrDefault(c.CreatedById.Value) : null,
             ActivatedByName = c.ActivatedById.HasValue ? names.GetValueOrDefault(c.ActivatedById.Value) : null,
             OfficeName = officeName,
             Actions = new ClientActionsResponse(
                 actions.CanEditDetails, actions.CanApprove, actions.CanDecline, actions.CanDelete, actions.CanRequestDeletion, actions.CanMarkSafe,
                 actions.CanRequestEdit, actions.EditPrivilegeOpen, actions.CanReviewEditRequests),
-            PendingDeletionRequest = pendingDeletion,
-            ApprovalBlockers = await _access.ApprovalBlockersAsync(c, cancellationToken),
+            PendingDeletionRequest = actions.PendingDeletionRequest,
+            ApprovalBlockers = actions.ApprovalBlockers ?? await _access.ApprovalBlockersAsync(c, cancellationToken),
             CurrentEditRequest = await ClientEditRequestsController.CurrentForAsync(_db, c, cancellationToken),
             ActiveLoan = await _access.ActiveLoanAsync(c.Id, cancellationToken),
             StaffName = c.StaffId.HasValue ? names.GetValueOrDefault(c.StaffId.Value) : null,
@@ -886,6 +879,59 @@ public class ClientsController : ControllerBase
             StaffAssignedAt = c.StaffAssignedAt,
             LoanBlocker = BCKash.Infrastructure.Loans.LoanApplicantRules.ClientProblem(c, await BCKash.Infrastructure.Clients.FaceCapturePolicy.IsRequiredAsync(_db, cancellationToken)),
         };
+    }
+
+    /// <summary>
+    /// Each word of the search must match the START of one of: the first, middle or last name, the
+    /// display name, the account number, the BVN, or the mobile number. So "Amina Bello" (or "ami bel")
+    /// finds Amina Bello, and 0803123 finds +234803123….
+    /// Start-of-value matching is deliberate: every one of those columns is indexed, so a search
+    /// across the whole client base (hundreds of thousands of rows) is an index lookup instead of a
+    /// full table scan — a "contains" match (LIKE '%x%') can't use an index and, with many staff
+    /// searching at once, saturates the database for everyone.
+    /// </summary>
+    private static IQueryable<Client> ApplySearch(IQueryable<Client> query, string search)
+    {
+        foreach (var word in search.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var prefix = SearchPatterns.StartsWith(word);
+            var phonePrefix = PhoneDigits(word) is { } digits ? SearchPatterns.StartsWith($"+234{digits}") : null;
+
+            query = query.Where(c =>
+                EF.Functions.Like(c.FirstName, prefix, LikeEscape) ||
+                EF.Functions.Like(c.MiddleName, prefix, LikeEscape) ||
+                EF.Functions.Like(c.LastName, prefix, LikeEscape) ||
+                EF.Functions.Like(c.DisplayName, prefix, LikeEscape) ||
+                EF.Functions.Like(c.AccountNo, prefix, LikeEscape) ||
+                EF.Functions.Like(c.Bvn, prefix, LikeEscape) ||
+                // Raw prefix too, for numbers saved before +234 normalization.
+                EF.Functions.Like(c.Mobile, prefix, LikeEscape) ||
+                (phonePrefix != null && EF.Functions.Like(c.Mobile, phonePrefix, LikeEscape)));
+        }
+
+        return query;
+    }
+
+    private const string LikeEscape = SearchPatterns.Escape;
+
+    /// <summary>
+    /// The subscriber part of a typed phone number, without the leading 0 or 234 that the stored
+    /// +234 form doesn't share. Null for words that aren't a phone fragment worth matching on.
+    /// </summary>
+    private static string? PhoneDigits(string word)
+    {
+        if (word.Length < 4 || !word.TrimStart('+').All(char.IsDigit))
+        {
+            return null;
+        }
+
+        var digits = word.TrimStart('+');
+        if (digits.StartsWith("234", StringComparison.Ordinal) && digits.Length > 10)
+        {
+            digits = digits[3..];
+        }
+
+        return digits.TrimStart('0') is { Length: >= 3 } subscriber ? subscriber : null;
     }
 
     /// <summary>Only records in the caller's offices (see <see cref="IOfficeScope"/>); everything for a super admin.</summary>

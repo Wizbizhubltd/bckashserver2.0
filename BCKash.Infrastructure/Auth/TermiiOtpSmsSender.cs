@@ -34,7 +34,7 @@ public class TermiiOtpSmsSender : IOtpSmsSender
             from = _settings.SenderId,
             sms = message,
             type = "plain",
-            channel = "generic",
+            channel = string.IsNullOrWhiteSpace(_settings.Channel) ? "generic" : _settings.Channel.Trim(),
             api_key = _settings.ApiKey,
         };
 

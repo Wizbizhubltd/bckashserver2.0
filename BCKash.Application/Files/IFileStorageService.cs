@@ -20,6 +20,9 @@ public interface IFileStorageService
     /// <summary>Null if <paramref name="location"/> doesn't resolve to an existing file.</summary>
     Task<StoredFileContent?> ReadAsync(string location, string originalFileName, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether <paramref name="location"/> resolves to a stored file — e.g. to hide records whose file was never carried over from the legacy system.</summary>
+    Task<bool> ExistsAsync(string? location, CancellationToken cancellationToken = default);
+
     /// <summary>Best-effort — never throws if the file is already gone.</summary>
     Task DeleteAsync(string location, CancellationToken cancellationToken = default);
 }

@@ -21,7 +21,7 @@ public class OtpResendTests : IClassFixture<BCKashWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Resent_code_completes_the_login_and_the_old_code_no_longer_works()
+    public async Task Resent_code_completes_the_login_and_the_codes_are_spent_afterwards()
     {
         const string email = "otp-resend-success@bckash.test";
         await SeedAsync(email);
@@ -36,11 +36,32 @@ public class OtpResendTests : IClassFixture<BCKashWebApplicationFactory>
         var secondChallenge = (await resendResponse.Content.ReadFromJsonAsync<OtpChallengeResponse>())!.ChallengeToken;
         var secondCode = ReadLoginCode(email);
 
-        var oldVerify = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(firstChallenge, firstCode));
-        Assert.Equal(HttpStatusCode.Unauthorized, oldVerify.StatusCode);
-
-        var newVerify = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(secondChallenge, secondCode));
+        // Pasted with a space, as copied from an SMS.
+        var newVerify = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(secondChallenge, $"{secondCode[..3]} {secondCode[3..]} "));
         Assert.Equal(HttpStatusCode.OK, newVerify.StatusCode);
+
+        // Signed in: neither code works again, from either screen.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(secondChallenge, secondCode))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(firstChallenge, firstCode))).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_code_that_arrives_late_after_a_resend_still_completes_the_login()
+    {
+        const string email = "otp-resend-late@bckash.test";
+        await SeedAsync(email);
+        using var client = _factory.CreateClient();
+
+        var firstChallenge = await LoginAsync(client, email);
+        var firstCode = ReadLoginCode(email);
+        await ExpireCooldownAsync(email);
+
+        var resendResponse = await client.PostAsJsonAsync("/api/v1/auth/login/otp/resend", new OtpResendRequest(firstChallenge));
+        var secondChallenge = (await resendResponse.Content.ReadFromJsonAsync<OtpChallengeResponse>())!.ChallengeToken;
+
+        // The first SMS turns up after the resend; the user types it on the (new) code screen.
+        var lateVerify = await client.PostAsJsonAsync("/api/v1/auth/login/otp/verify", new OtpVerifyRequest(secondChallenge, firstCode));
+        Assert.Equal(HttpStatusCode.OK, lateVerify.StatusCode);
     }
 
     [Fact]

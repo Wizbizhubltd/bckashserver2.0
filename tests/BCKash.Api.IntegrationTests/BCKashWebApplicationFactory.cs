@@ -40,7 +40,10 @@ public class BCKashWebApplicationFactory : WebApplicationFactory<Program>
         // Fixed pass marks, whatever a developer has tuned in their .env.
         builder.UseSetting("Biometrics:FaceMatchThreshold", "90");
         builder.UseSetting("Biometrics:LivenessThreshold", "80");
+        // Tests read the dashboard straight after changing data, so no minute-long reuse.
+        builder.UseSetting("Dashboard:SummaryCacheSeconds", "0");
         builder.UseSetting("LoginThrottle:MaxFailedAttempts", "3");
+        builder.UseSetting("LoginThrottle:IpMaxFailedAttempts", "6");
         // WindowMinutes > LockoutMinutes on purpose: it lets ThrottleTests plant a failed
         // attempt old enough to be past its lockout cooldown but still inside the counting
         // window, isolating the LockoutMinutes-specific unlock path from window expiry.

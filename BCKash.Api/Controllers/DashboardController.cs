@@ -9,6 +9,9 @@ using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace BCKash.Api.Controllers;
 
@@ -41,19 +44,94 @@ public class DashboardController : ControllerBase
     // Legacy loans awaiting approval — only when no approval was ever recorded on them.
     private static readonly LoanStatus[] PendingApprovalStatuses = [LoanStatus.New, LoanStatus.Pending, LoanStatus.NeedChanges];
 
+    /// <summary>
+    /// How long one office scope's figures are reused. The summary is ~20 aggregate queries over the
+    /// loan tables (millions of rows) and it's the landing screen for every staff member, while every
+    /// repayment or disbursement clears the query cache for those tables — so without this, a busy
+    /// office recomputes it for nearly every visit. A minute-old dashboard is fine.
+    /// </summary>
+    /// Dashboard:SummaryCacheSeconds overrides it; 0 turns the cache off.
+    private const int DefaultSummaryCacheSeconds = 60;
+
+    // One rebuild at a time per scope (on this instance): when an entry expires, the first request
+    // recomputes it and the rest wait for that result instead of all hitting the database at once.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> SummaryLocks = new();
+
     private readonly BCKashDbContext _db;
     private readonly IOverdueRulesProvider _overdueRules;
     private readonly IOfficeScope _scope;
+    private readonly IDistributedCache _cache;
+    private readonly TimeSpan _summaryCacheDuration;
 
-    public DashboardController(BCKashDbContext db, IOverdueRulesProvider overdueRules, IOfficeScope scope)
+    public DashboardController(BCKashDbContext db, IOverdueRulesProvider overdueRules, IOfficeScope scope, IDistributedCache cache, IConfiguration configuration)
     {
+        _summaryCacheDuration = TimeSpan.FromSeconds(configuration.GetValue("Dashboard:SummaryCacheSeconds", DefaultSummaryCacheSeconds));
         _scope = scope;
         _db = db;
         _overdueRules = overdueRules;
+        _cache = cache;
     }
 
     [HttpGet("summary")]
     public async Task<ActionResult<DashboardSummaryResponse>> Summary(CancellationToken cancellationToken)
+    {
+        // The figures depend only on which offices the caller can see, so everyone with the same scope shares them.
+        var officeIds = await _scope.GetOfficeIdsAsync(cancellationToken);
+        var key = "dashboard:summary:" + (officeIds is null ? "all" : string.Join(",", officeIds.Order()));
+
+        if (_summaryCacheDuration <= TimeSpan.Zero)
+        {
+            return Ok(await BuildSummaryAsync(officeIds, cancellationToken));
+        }
+
+        if (await ReadCachedAsync(key, cancellationToken) is { } cached)
+        {
+            return Ok(cached);
+        }
+
+        var gate = SummaryLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (await ReadCachedAsync(key, cancellationToken) is { } builtMeanwhile)
+            {
+                return Ok(builtMeanwhile);
+            }
+
+            var summary = await BuildSummaryAsync(officeIds, cancellationToken);
+            try
+            {
+                await _cache.SetStringAsync(key, JsonSerializer.Serialize(summary),
+                    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = _summaryCacheDuration }, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Not cached this time — the next request computes it again.
+            }
+
+            return Ok(summary);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<DashboardSummaryResponse?> ReadCachedAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var json = await _cache.GetStringAsync(key, cancellationToken);
+            return json is null ? null : JsonSerializer.Deserialize<DashboardSummaryResponse>(json);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A cache outage just means computing the figures fresh.
+            return null;
+        }
+    }
+
+    private async Task<DashboardSummaryResponse> BuildSummaryAsync(IReadOnlyCollection<int>? officeIds, CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var monthStart = new DateOnly(today.Year, today.Month, 1);
@@ -63,7 +141,7 @@ public class DashboardController : ControllerBase
         var rules = await _overdueRules.GetAsync(cancellationToken);
         var repaymentOverdueBefore = today.AddDays(-rules.RepaymentOverdueDays);
         var loanOverdueBefore = today.AddDays(-rules.LoanOverdueDays);
-        var data = new ScopedData(_db, await _scope.GetOfficeIdsAsync(cancellationToken));
+        var data = new ScopedData(_db, officeIds);
 
         var officesCount = await data.Offices.CountAsync(cancellationToken);
         var activeOfficesCount = await data.Offices.CountAsync(o => o.Active, cancellationToken);
@@ -81,12 +159,12 @@ public class DashboardController : ControllerBase
         // date bound this table (millions of rows on a real portfolio) makes an already
         // low-selectivity filter scan the entire history back to loans long since resolved.
         var lateLoanWindowStart = today.AddYears(-1);
-        var lateLoansCount = await data.LoanRepaymentSchedules
-            .Where(s => s.DueDate < repaymentOverdueBefore && s.DueDate >= lateLoanWindowStart
-                     && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)
-                     && s.Loan!.Status == LoanStatus.Disbursed)
-            .Select(s => s.LoanId)
-            .Distinct()
+        // From the scope's disbursed loans (office + status index) to their schedules, not from every
+        // schedule row in the company to the office.
+        var lateLoansCount = await data.Loans
+            .Where(l => l.Status == LoanStatus.Disbursed
+                     && l.LoanRepaymentSchedules.Any(s => s.DueDate < repaymentOverdueBefore && s.DueDate >= lateLoanWindowStart
+                                                       && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)))
             .CountAsync(cancellationToken);
 
         var disbursementsThisMonth = data.LoanTransactions
@@ -104,7 +182,7 @@ public class DashboardController : ControllerBase
         var pendingLoanApplicationsCount = await data.LoanApplications.CountAsync(a => a.Status == ApprovalStatus.Pending, cancellationToken);
         var pendingStaffOnboardingCount = await data.Users.CountAsync(u => u.OnboardingStatus == UserOnboardingStatus.Pending, cancellationToken);
 
-        return Ok(new DashboardSummaryResponse(
+        return new DashboardSummaryResponse(
             officesCount,
             activeOfficesCount,
             staffCount,
@@ -118,7 +196,7 @@ public class DashboardController : ControllerBase
             repaymentsThisMonthAmount,
             pendingLoanApplicationsCount,
             pendingStaffOnboardingCount,
-            loanPortfolio));
+            loanPortfolio);
     }
 
     /// <summary>

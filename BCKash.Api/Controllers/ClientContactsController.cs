@@ -47,7 +47,10 @@ public class ClientContactsController : ControllerBase
             .OrderByDescending(c => c.CreatedAt)
             .ThenByDescending(c => c.Id)
             .ToListAsync(cancellationToken);
-        return Ok(contacts.Select(ToResponse).ToList());
+
+        // A legacy photo path whose file never made it into storage counts as no photo.
+        var photoExists = await Task.WhenAll(contacts.Select(c => _files.ExistsAsync(c.Photo, cancellationToken)));
+        return Ok(contacts.Select((c, i) => ToResponse(c) with { HasPhoto = photoExists[i] }).ToList());
     }
 
     [HttpPost]

@@ -155,6 +155,9 @@ public class LoanTransactionConfiguration : IEntityTypeConfiguration<LoanTransac
         // Backs the dashboard's this-month disbursements/repayments count+sum queries.
         builder.HasIndex(t => new { t.TransactionType, t.Date });
 
+        // Transaction lists are filtered to the caller's office.
+        builder.HasIndex(t => t.OfficeId);
+
         builder.HasOne(t => t.Loan)
             .WithMany(l => l.LoanTransactions)
             .HasForeignKey(t => t.LoanId)

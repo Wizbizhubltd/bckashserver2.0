@@ -1,7 +1,11 @@
 namespace BCKash.Application.Auth;
 
 /// <summary>A one-time code to deliver by email and/or SMS — whichever the recipient has on file.</summary>
-public record OtpMessage(string? Email, string? Phone, string Subject, string Body);
+/// <remarks>
+/// <paramref name="Bulk"/> marks a message nobody is waiting on (the daily customer reminders): those go
+/// through their own lane, so thousands of reminders can never hold up a staff member's login code.
+/// </remarks>
+public record OtpMessage(string? Email, string? Phone, string Subject, string Body, bool Bulk = false);
 
 /// <summary>
 /// Hands OTP delivery off so the requesting endpoint doesn't wait on SMTP/SMS. A slow or

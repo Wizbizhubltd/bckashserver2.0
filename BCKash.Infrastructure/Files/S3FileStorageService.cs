@@ -74,6 +74,29 @@ public class S3FileStorageService : IFileStorageService
         }
     }
 
+    public async Task<bool> ExistsAsync(string? location, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return false;
+        }
+
+        if (!TryParse(location, out var bucket, out var key))
+        {
+            return await _legacy.ExistsAsync(location, cancellationToken);
+        }
+
+        try
+        {
+            await _s3.GetObjectMetadataAsync(bucket, key, cancellationToken);
+            return true;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    }
+
     public async Task DeleteAsync(string location, CancellationToken cancellationToken = default)
     {
         if (!TryParse(location, out var bucket, out var key))

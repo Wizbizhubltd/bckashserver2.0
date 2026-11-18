@@ -187,13 +187,13 @@ public partial class LoanNotificationService : ILoanNotificationService
             {
                 var subject = Fill(Template(settings, keys.EmailSubject, keys.DefaultSubject), filled.Placeholders);
                 var body = ToPlainText(Fill(Template(settings, keys.EmailTemplate, keys.DefaultMessage), filled.Placeholders)) + company.EmailFooter;
-                await _dispatcher.DispatchAsync(new OtpMessage(filled.Email.Trim(), null, subject, body), cancellationToken);
+                await _dispatcher.DispatchAsync(new OtpMessage(filled.Email.Trim(), null, subject, body, Bulk: true), cancellationToken);
             }
 
             if (IsOn(settings, keys.SmsSwitch) && !string.IsNullOrWhiteSpace(filled.Phone))
             {
                 var text = ToPlainText(Fill(Template(settings, keys.SmsTemplate, keys.DefaultMessage), filled.Placeholders));
-                await _dispatcher.DispatchAsync(new OtpMessage(null, filled.Phone.Trim(), string.Empty, text), cancellationToken);
+                await _dispatcher.DispatchAsync(new OtpMessage(null, filled.Phone.Trim(), string.Empty, text, Bulk: true), cancellationToken);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
