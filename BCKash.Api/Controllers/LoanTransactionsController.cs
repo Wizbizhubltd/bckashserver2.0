@@ -1,4 +1,5 @@
 using BCKash.Api.Contracts;
+using BCKash.Api.Infrastructure;
 using BCKash.Domain.Loans;
 using BCKash.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -78,8 +79,8 @@ public class LoanTransactionsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
         {
             query = query.Where(t =>
-                (t.Receipt != null && t.Receipt.Contains(search)) ||
-                (t.Loan != null && t.Loan.AccountNumber != null && t.Loan.AccountNumber.Contains(search)));
+                EF.Functions.Like(t.Receipt, SearchPatterns.StartsWith(search), SearchPatterns.Escape) ||
+                (t.Loan != null && EF.Functions.Like(t.Loan.AccountNumber, SearchPatterns.StartsWith(search), SearchPatterns.Escape)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);

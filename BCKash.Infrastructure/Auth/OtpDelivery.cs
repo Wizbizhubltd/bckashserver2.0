@@ -9,6 +9,37 @@ namespace BCKash.Infrastructure.Auth;
 
 internal static class OtpDelivery
 {
+    /// <summary>
+    /// Email and SMS at the same time, each with its own scope (the senders are scoped and may use the
+    /// DbContext), so the SMS — usually what the user is waiting for — doesn't queue behind SMTP.
+    /// </summary>
+    public static Task SendInParallelAsync(IServiceScopeFactory scopeFactory, ILogger logger, OtpMessage message, CancellationToken cancellationToken)
+    {
+        async Task SendOneAsync(OtpMessage part)
+        {
+            using var scope = scopeFactory.CreateScope();
+            await SendAsync(
+                scope.ServiceProvider.GetRequiredService<IEmailSender>(),
+                scope.ServiceProvider.GetRequiredService<IOtpSmsSender>(),
+                logger,
+                part,
+                cancellationToken);
+        }
+
+        var parts = new List<Task>();
+        if (!string.IsNullOrWhiteSpace(message.Phone))
+        {
+            parts.Add(SendOneAsync(message with { Email = null }));
+        }
+
+        if (!string.IsNullOrWhiteSpace(message.Email))
+        {
+            parts.Add(SendOneAsync(message with { Phone = null }));
+        }
+
+        return Task.WhenAll(parts);
+    }
+
     // Delivery is best-effort per channel: a failure on one (a bad Termii key, SMTP relay
     // hiccup, etc.) must not block the other from going out, and must never surface as a
     // request failure — the OTP row already exists, so the user can still receive/retry it.
@@ -41,10 +72,21 @@ internal static class OtpDelivery
     }
 }
 
-/// <summary>Production dispatcher: queues the message and returns immediately; a background worker delivers it.</summary>
+/// <summary>
+/// Production dispatcher: queues the message and returns immediately; background workers deliver it.
+/// Two lanes: codes someone is waiting for (login, password reset, loan-application confirmation) get
+/// several workers of their own, and bulk messages (daily customer reminders) get one. Before this,
+/// a single worker delivered everything in order — so a reminder run of thousands of SMS left staff
+/// waiting minutes for a login code, often past its expiry.
+/// </summary>
 public sealed class BackgroundOtpDispatcher : BackgroundService, IOtpDispatcher
 {
-    private readonly Channel<OtpMessage> _queue = Channel.CreateUnbounded<OtpMessage>(new UnboundedChannelOptions { SingleReader = true });
+    // Each worker handles one message at a time; a slow SMTP handshake or SMS call only holds up its own worker.
+    private const int UrgentWorkers = 4;
+    private const int BulkWorkers = 1;
+
+    private readonly Channel<OtpMessage> _urgent = Channel.CreateUnbounded<OtpMessage>();
+    private readonly Channel<OtpMessage> _bulk = Channel.CreateUnbounded<OtpMessage>();
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BackgroundOtpDispatcher> _logger;
 
@@ -55,20 +97,25 @@ public sealed class BackgroundOtpDispatcher : BackgroundService, IOtpDispatcher
     }
 
     public Task DispatchAsync(OtpMessage message, CancellationToken cancellationToken = default) =>
-        _queue.Writer.WriteAsync(message, cancellationToken).AsTask();
+        (message.Bulk ? _bulk : _urgent).Writer.WriteAsync(message, cancellationToken).AsTask();
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(
+            Enumerable.Range(0, UrgentWorkers).Select(_ => DrainAsync(_urgent.Reader, stoppingToken))
+                .Concat(Enumerable.Range(0, BulkWorkers).Select(_ => DrainAsync(_bulk.Reader, stoppingToken))));
+
+    private async Task DrainAsync(ChannelReader<OtpMessage> reader, CancellationToken stoppingToken)
     {
-        await foreach (var message in _queue.Reader.ReadAllAsync(stoppingToken))
+        try
         {
-            // The senders are scoped (SmtpEmailSender, typed HttpClients), so resolve per message.
-            using var scope = _scopeFactory.CreateScope();
-            await OtpDelivery.SendAsync(
-                scope.ServiceProvider.GetRequiredService<IEmailSender>(),
-                scope.ServiceProvider.GetRequiredService<IOtpSmsSender>(),
-                _logger,
-                message,
-                stoppingToken);
+            await foreach (var message in reader.ReadAllAsync(stoppingToken))
+            {
+                await OtpDelivery.SendInParallelAsync(_scopeFactory, _logger, message, stoppingToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
         }
     }
 }

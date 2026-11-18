@@ -14,6 +14,12 @@ public class AuthService : IAuthService
     private const int OtpMaxAttempts = 5;
     private const int PasswordMinLength = 8;
     private static readonly TimeSpan PasswordResetOtpLifetime = TimeSpan.FromMinutes(15);
+
+    // Long enough for an SMS that's queued or slowed by the network to still be usable on arrival.
+    private static readonly TimeSpan LoginOtpLifetime = TimeSpan.FromMinutes(10);
+
+    // How many earlier codes in a resend chain are still accepted (see LoginOtp.PreviousOtpId).
+    private const int OtpChainDepth = 3;
     private static readonly TimeSpan PasswordResetCooldown = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan LoginOtpResendCooldown = TimeSpan.FromSeconds(60);
 
@@ -56,16 +62,20 @@ public class AuthService : IAuthService
     {
         var user = await FindByEmailAsync(email, cancellationToken);
 
-        if (await _throttleService.IsLockedOutAsync(user?.Id, ip, cancellationToken))
+        var lockedUntil = await _throttleService.GetLockedUntilAsync(user?.Id, ip, cancellationToken);
+        if (lockedUntil is not null)
         {
-            return new LoginResult(LoginOutcomeType.LockedOut);
+            return new LoginResult(LoginOutcomeType.LockedOut, LockedUntilUtc: lockedUntil);
         }
 
-        if (user is null || !_passwordHasher.Verify(password, user.PasswordHash))
+        if (user is null || !PasswordMatches(password, user.PasswordHash))
         {
             await _throttleService.RecordFailedAttemptAsync(user?.Id, ip, cancellationToken);
             return new LoginResult(LoginOutcomeType.InvalidCredentials);
         }
+
+        // The right password wipes the slate: earlier typos shouldn't count towards a later lockout.
+        await _throttleService.ClearFailedAttemptsAsync(user.Id, cancellationToken);
 
         if (user.Blocked)
         {
@@ -117,16 +127,17 @@ public class AuthService : IAuthService
             return new OtpVerifyResult(OtpVerifyOutcomeType.TooManyAttempts);
         }
 
-        if (!IsValidOtpCode(otp, code))
+        var chain = await MatchingChainAsync(otp, code, cancellationToken);
+        if (chain is null)
         {
             otp.Attempts++;
             await _db.SaveChangesAsync(cancellationToken);
             return new OtpVerifyResult(OtpVerifyOutcomeType.InvalidCode);
         }
 
-        // Consuming the code is saved together with the new session (one SaveChanges in IssueTokensAsync).
+        // Consuming the codes is saved together with the new session (one SaveChanges in IssueTokensAsync).
         var user = otp.User;
-        otp.ConsumedAtUtc = DateTime.UtcNow;
+        await ConsumeAsync(chain, cancellationToken);
 
         var userType = await GetUserTypeSlugAsync(user.Id, cancellationToken);
         var (accessToken, refreshToken) = await StartSessionAsync(user, userType, deviceId, cancellationToken);
@@ -167,9 +178,9 @@ public class AuthService : IAuthService
             return new OtpResendResult(OtpResendOutcomeType.TooSoon);
         }
 
-        // Retire the old code so only the newest one sent can complete the login.
-        otp.ConsumedAtUtc = DateTime.UtcNow;
-        var newChallengeToken = await IssueLoginOtpAsync(user, cancellationToken);
+        // The previous code stays valid until it expires (linked as PreviousOtpId), so if its SMS turns
+        // up after this new one, typing either still works.
+        var newChallengeToken = await IssueLoginOtpAsync(user, cancellationToken, previousOtpId: otp.Id);
         return new OtpResendResult(OtpResendOutcomeType.Resent, newChallengeToken);
     }
 
@@ -177,9 +188,12 @@ public class AuthService : IAuthService
     {
         var user = await FindByEmailAsync(email, cancellationToken);
 
-        if (await _throttleService.IsLockedOutAsync(user?.Id, ip, cancellationToken))
+        // Only the IP-wide lock applies here, not the account lock: resetting the password is the
+        // way out of a locked account. The SMS cooldown below still limits how often it can run.
+        var lockedUntil = await _throttleService.GetIpLockedUntilAsync(ip, cancellationToken);
+        if (lockedUntil is not null)
         {
-            return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.LockedOut);
+            return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.LockedOut, LockedUntilUtc: lockedUntil);
         }
 
         // Blocked or not-yet-approved accounts couldn't sign in with a new password anyway, so they
@@ -197,6 +211,14 @@ public class AuthService : IAuthService
             return new PasswordResetRequestResult(PasswordResetRequestOutcomeType.TooSoon);
         }
 
+        // A code from an earlier request may still be on its way — keep it usable alongside this one.
+        var now = DateTime.UtcNow;
+        var previousOtpId = await _db.LoginOtps
+            .Where(o => o.UserId == user.Id && o.ConsumedAtUtc == null && o.ExpiresAtUtc > now)
+            .OrderByDescending(o => o.Id)
+            .Select(o => (int?)o.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var code = GenerateNumericOtp(6);
         var otp = new LoginOtp
         {
@@ -204,6 +226,7 @@ public class AuthService : IAuthService
             CodeHash = Hash(code),
             ExpiresAtUtc = DateTime.UtcNow.Add(PasswordResetOtpLifetime),
             CreatedAt = DateTime.UtcNow,
+            PreviousOtpId = previousOtpId,
         };
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
@@ -239,7 +262,8 @@ public class AuthService : IAuthService
             return new PasswordResetResult(PasswordResetOutcomeType.TooManyAttempts);
         }
 
-        if (!IsValidOtpCode(otp, code))
+        var chain = await MatchingChainAsync(otp, code, cancellationToken);
+        if (chain is null)
         {
             otp.Attempts++;
             await _db.SaveChangesAsync(cancellationToken);
@@ -259,7 +283,7 @@ public class AuthService : IAuthService
             return new PasswordResetResult(PasswordResetOutcomeType.InvalidChallenge);
         }
 
-        otp.ConsumedAtUtc = DateTime.UtcNow;
+        await ConsumeAsync(chain, cancellationToken);
         user.PasswordHash = _passwordHasher.Hash(newPassword);
 
         // The user chose this password themselves, so any pending temporary-password change is done.
@@ -273,6 +297,9 @@ public class AuthService : IAuthService
         user.ActiveSessionId = null;
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // A new password unlocks an account locked by wrong guesses at the old one.
+        await _throttleService.ClearFailedAttemptsAsync(user.Id, cancellationToken);
         return new PasswordResetResult(PasswordResetOutcomeType.Success);
     }
 
@@ -337,7 +364,7 @@ public class AuthService : IAuthService
             return new PasswordChangeResult(PasswordChangeOutcomeType.NotFound);
         }
 
-        if (!_passwordHasher.Verify(currentPassword, user.PasswordHash))
+        if (!PasswordMatches(currentPassword, user.PasswordHash))
         {
             return new PasswordChangeResult(PasswordChangeOutcomeType.InvalidCurrentPassword);
         }
@@ -409,15 +436,16 @@ public class AuthService : IAuthService
         return (accessToken, rawRefreshToken);
     }
 
-    private async Task<string> IssueLoginOtpAsync(User user, CancellationToken cancellationToken)
+    private async Task<string> IssueLoginOtpAsync(User user, CancellationToken cancellationToken, int? previousOtpId = null)
     {
         var code = GenerateNumericOtp(6);
         var otp = new LoginOtp
         {
             UserId = user.Id,
             CodeHash = Hash(code),
-            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(5),
+            ExpiresAtUtc = DateTime.UtcNow.Add(LoginOtpLifetime),
             CreatedAt = DateTime.UtcNow,
+            PreviousOtpId = previousOtpId,
         };
         _db.LoginOtps.Add(otp);
         await _db.SaveChangesAsync(cancellationToken);
@@ -426,7 +454,7 @@ public class AuthService : IAuthService
         await SendOtpAsync(
             user,
             $"Your {companyName} login code",
-            $"Your {companyName} login verification code is {code}. It expires in 5 minutes.",
+            $"Your {companyName} login verification code is {code}. It expires in {(int)LoginOtpLifetime.TotalMinutes} minutes.",
             cancellationToken);
 
         return _jwtTokenService.GenerateLoginOtpChallengeToken(user.Id, otp.Id);
@@ -460,9 +488,78 @@ public class AuthService : IAuthService
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>Matches the code sent for <paramref name="otp"/>, or the configured master OTP (see <see cref="OtpSettings.MasterOtp"/>).</summary>
+    /// <summary>
+    /// The challenge's code, or — if the typed code is an earlier one from the same resend chain that
+    /// hasn't expired or been used — the chain up to it. Null when nothing matches.
+    /// </summary>
+    private async Task<List<LoginOtp>?> MatchingChainAsync(LoginOtp otp, string code, CancellationToken cancellationToken)
+    {
+        var chain = new List<LoginOtp> { otp };
+        if (IsValidOtpCode(otp, code))
+        {
+            return chain;
+        }
+
+        var hash = Hash(DigitsOnly(code));
+        var now = DateTime.UtcNow;
+        var previousId = otp.PreviousOtpId;
+        for (var depth = 0; depth < OtpChainDepth && previousId is not null; depth++)
+        {
+            var previous = await _db.LoginOtps.FirstOrDefaultAsync(o => o.Id == previousId && o.UserId == otp.UserId, cancellationToken);
+            if (previous is null)
+            {
+                break;
+            }
+
+            chain.Add(previous);
+            if (previous.ConsumedAtUtc is null && previous.ExpiresAtUtc > now && previous.CodeHash == hash)
+            {
+                return chain;
+            }
+
+            previousId = previous.PreviousOtpId;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Spends the matched codes and every other outstanding code for the same account — once someone
+    /// has signed in or reset their password, no code sent earlier (resends, repeated requests) may be
+    /// used again. Saved by the caller's SaveChanges.
+    /// </summary>
+    private async Task ConsumeAsync(List<LoginOtp> chain, CancellationToken cancellationToken)
+    {
+        var userId = chain[0].UserId;
+        var now = DateTime.UtcNow;
+        var outstanding = await _db.LoginOtps.Where(o => o.UserId == userId && o.ConsumedAtUtc == null).ToListAsync(cancellationToken);
+        foreach (var code in chain.Concat(outstanding).Where(c => c.ConsumedAtUtc is null))
+        {
+            code.ConsumedAtUtc = now;
+        }
+    }
+
+    /// <summary>Codes pasted from SMS or email often carry spaces ("123 456", "123456 ") — only the digits count.</summary>
+    private static string DigitsOnly(string code) => new(code.Where(char.IsDigit).ToArray());
+
+    /// <summary>
+    /// The typed password, or the same with surrounding spaces removed: staff copy temporary passwords
+    /// out of emails and SMS on their phones, and the copy often picks up a trailing space.
+    /// </summary>
+    private bool PasswordMatches(string password, string hash)
+    {
+        if (_passwordHasher.Verify(password, hash))
+        {
+            return true;
+        }
+
+        var trimmed = password.Trim();
+        return trimmed.Length > 0 && trimmed.Length != password.Length && _passwordHasher.Verify(trimmed, hash);
+    }
+
     private bool IsValidOtpCode(LoginOtp otp, string code)
     {
-        if (otp.CodeHash == Hash(code))
+        if (otp.CodeHash == Hash(DigitsOnly(code)))
         {
             return true;
         }

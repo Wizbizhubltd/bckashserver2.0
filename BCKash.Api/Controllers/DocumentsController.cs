@@ -44,7 +44,11 @@ public class DocumentsController : ControllerBase
             .Where(d => d.Type == ReferenceEntityType.Client && d.RecordId == clientId)
             .OrderByDescending(d => d.Id)
             .ToListAsync(cancellationToken);
-        return Ok(items.Select(ToResponse).ToList());
+
+        // Many legacy records point at files that were never carried over to this system's storage.
+        // They can't be downloaded, so they aren't listed.
+        var exists = await Task.WhenAll(items.Select(d => _fileStorage.ExistsAsync(d.Location, cancellationToken)));
+        return Ok(items.Where((_, i) => exists[i]).Select(ToResponse).ToList());
     }
 
     /// <summary>

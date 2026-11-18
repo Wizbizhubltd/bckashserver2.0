@@ -136,7 +136,7 @@ public class OfficeFundsController : ControllerBase
     public async Task<ActionResult<OfficeFundingResponse>> Acknowledge(int fundingId, FundingCommentRequest request, CancellationToken cancellationToken) =>
         await FundingResultAsync(await _funds.AcknowledgeAsync(fundingId, request.Comment, cancellationToken), cancellationToken);
 
-    /// <summary>Multipart: <c>reason</c> and the bank statement <c>statement</c> (PDF/JPG/PNG, up to 10 MB).</summary>
+    /// <summary>Multipart: <c>reason</c> and the bank statement <c>statement</c> (PDF/JPG/PNG, up to 2 MB).</summary>
     [HttpPost("office-fundings/{fundingId:int}/dispute")]
     [RequestSizeLimit(IOfficeFundService.MaxStatementBytes + 1024 * 1024)]
     public async Task<ActionResult<OfficeFundingResponse>> Dispute(int fundingId, [FromForm] string? reason, IFormFile? statement, CancellationToken cancellationToken)

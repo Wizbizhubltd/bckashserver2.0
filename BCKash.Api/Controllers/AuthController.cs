@@ -30,7 +30,7 @@ public class AuthController : ControllerBase
             LoginOutcomeType.RequiresOtp => Ok(new OtpChallengeResponse(result.OtpChallengeToken!)),
             LoginOutcomeType.InvalidCredentials => Problem(title: "Invalid credentials", statusCode: StatusCodes.Status401Unauthorized),
             LoginOutcomeType.Blocked => Problem(title: "Account is blocked", statusCode: StatusCodes.Status403Forbidden),
-            LoginOutcomeType.LockedOut => Problem(title: "Too many failed attempts — try again later", statusCode: StatusCodes.Status429TooManyRequests),
+            LoginOutcomeType.LockedOut => LockedOutProblem(result.LockedUntilUtc),
             LoginOutcomeType.OutsideAccessWindow => Problem(title: "Login is not permitted at this time", statusCode: StatusCodes.Status403Forbidden),
             LoginOutcomeType.PendingOnboarding => Problem(title: "This account is awaiting authorization and cannot log in yet", statusCode: StatusCodes.Status403Forbidden),
             LoginOutcomeType.WrongPortal => WrongPortalProblem(),
@@ -98,7 +98,7 @@ public class AuthController : ControllerBase
         return result.Outcome switch
         {
             PasswordResetRequestOutcomeType.Accepted => Ok(new ForgotPasswordResponse(result.ChallengeToken!)),
-            PasswordResetRequestOutcomeType.LockedOut => Problem(title: "Too many failed attempts — try again later", statusCode: StatusCodes.Status429TooManyRequests),
+            PasswordResetRequestOutcomeType.LockedOut => LockedOutProblem(result.LockedUntilUtc),
             PasswordResetRequestOutcomeType.TooSoon => Problem(title: "A code was sent recently — wait a minute before requesting another", statusCode: StatusCodes.Status429TooManyRequests),
             _ => Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
@@ -176,4 +176,25 @@ public class AuthController : ControllerBase
 
     private static UserDataResponse ToResponse(UserLoginData data) =>
         new(data.UserId, data.FullName, data.Email, data.PhoneNumber, data.UserClass, data.UserType, data.MustChangePassword);
+
+    /// <summary>429 that says how long to wait, with a Retry-After header for clients that read it.</summary>
+    private ObjectResult LockedOutProblem(DateTime? lockedUntilUtc)
+    {
+        var minutes = lockedUntilUtc is null
+            ? (int?)null
+            : Math.Max(1, (int)Math.Ceiling((lockedUntilUtc.Value - DateTime.UtcNow).TotalMinutes));
+
+        if (minutes is not null)
+        {
+            Response.Headers.RetryAfter = (minutes.Value * 60).ToString();
+        }
+
+        var title = minutes switch
+        {
+            null => "Too many failed attempts — try again later",
+            1 => "Too many failed attempts — try again in 1 minute",
+            _ => $"Too many failed attempts — try again in {minutes} minutes",
+        };
+        return Problem(title: title, statusCode: StatusCodes.Status429TooManyRequests);
+    }
 }

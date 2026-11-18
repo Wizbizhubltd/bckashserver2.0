@@ -223,6 +223,39 @@ public class ClientsControllerTests : IClassFixture<BCKashWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Search_matches_a_full_name_an_account_number_or_a_phone_number()
+    {
+        var httpClient = await AuthenticatedClientFactory.CreateAsync(_factory, "client-search-words@bckash.test", "clients.manage");
+
+        var unique = Guid.NewGuid().ToString("N")[..8];
+        var digits = Random.Shared.Next(1000000, 9999999).ToString();
+        var created = await httpClient.PostAsJsonAsync("/api/v1/clients", NewClientRequest($"Amina{unique}", $"Bello{unique}", mobile: $"0803{digits}"));
+        var client = await created.Content.ReadFromJsonAsync<ClientResponse>(TestJson.Options);
+
+        async Task<int> CountAsync(string search) =>
+            (await httpClient.GetFromJsonAsync<PagedResult<ClientListItemResponse>>($"/api/v1/clients?search={Uri.EscapeDataString(search)}", TestJson.Options))!.TotalCount;
+
+        Assert.Equal(1, await CountAsync($"Amina{unique} Bello{unique}"));
+        Assert.Equal(1, await CountAsync($"Bello{unique} Amina{unique}"));
+        Assert.Equal(1, await CountAsync($"0803{digits}"));
+        Assert.Equal(1, await CountAsync($"+234803{digits}"));
+        Assert.Equal(0, await CountAsync($"Amina{unique} Nobody"));
+
+        // Start-of-word matching: a partial word finds them, text from the middle of a name doesn't.
+        Assert.Equal(1, await CountAsync($"Amina{unique[..4]} Bel"));
+        Assert.Equal(0, await CountAsync($"mina{unique}"));
+        // A typed % or _ is literal, not a wildcard that matches everyone.
+        Assert.Equal(0, await CountAsync($"%{unique}"));
+
+        if (!string.IsNullOrEmpty(client!.AccountNo))
+        {
+            Assert.Contains(
+                (await httpClient.GetFromJsonAsync<PagedResult<ClientListItemResponse>>($"/api/v1/clients?search={client.AccountNo}", TestJson.Options))!.Items,
+                c => c.Id == client.Id);
+        }
+    }
+
+    [Fact]
     public async Task Page_size_is_clamped_to_the_configured_maximum()
     {
         var httpClient = await AuthenticatedClientFactory.CreateAsync(_factory, "client-pagesize@bckash.test", "clients.manage");

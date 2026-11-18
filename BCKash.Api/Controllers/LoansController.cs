@@ -90,7 +90,7 @@ public class LoansController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            query = query.Where(l => l.AccountNumber != null && l.AccountNumber.Contains(search));
+            query = query.Where(l => EF.Functions.Like(l.AccountNumber, SearchPatterns.StartsWith(search), SearchPatterns.Escape));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -215,14 +215,12 @@ public class LoansController : ControllerBase
         // Late only once the "repayment overdue after N days" threshold has passed (Settings → Loan).
         var overdueBefore = today.AddDays(-(await overdueRules.GetAsync(cancellationToken)).RepaymentOverdueDays);
 
-        var lateLoanIds = _db.LoanRepaymentSchedules
-            .Where(s => s.DueDate < overdueBefore && s.DueDate >= windowStart
-                     && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)
-                     && s.Loan!.Status == LoanStatus.Disbursed)
-            .Select(s => s.LoanId)
-            .Distinct();
-
-        var query = _db.Loans.Where(l => lateLoanIds.Contains(l.Id));
+        // Start from the caller's disbursed loans (office + status index) and check each one's
+        // schedule (loan_id + due_date index), rather than collecting every late instalment in the
+        // company first and only then narrowing to the office.
+        var query = _db.Loans.Where(l => l.Status == LoanStatus.Disbursed
+            && l.LoanRepaymentSchedules.Any(s => s.DueDate < overdueBefore && s.DueDate >= windowStart
+                                              && (s.Principal ?? 0) > (s.PrincipalPaid ?? 0)));
         query = await ScopedAsync(query, cancellationToken);
 
         if (officeId.HasValue)
@@ -232,7 +230,7 @@ public class LoansController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            query = query.Where(l => l.AccountNumber != null && l.AccountNumber.Contains(search));
+            query = query.Where(l => EF.Functions.Like(l.AccountNumber, SearchPatterns.StartsWith(search), SearchPatterns.Escape));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);

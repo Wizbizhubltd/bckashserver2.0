@@ -2,6 +2,7 @@ using System.Security.Claims;
 using BCKash.Api.Contracts;
 using BCKash.Application.Auth;
 using BCKash.Application.Clients;
+using BCKash.Application.Files;
 using BCKash.Application.Identity;
 using BCKash.Domain.Clients;
 using BCKash.Domain.Identity;
@@ -33,9 +34,11 @@ public class ClientBiometricsController : ControllerBase
     private readonly IClientAccess _access;
     private readonly IClientBiometricsService _biometrics;
     private readonly IOfficeScope _scope;
+    private readonly IFileStorageService _files;
 
-    public ClientBiometricsController(BCKashDbContext db, IClientAccess access, IClientBiometricsService biometrics, IOfficeScope scope)
+    public ClientBiometricsController(BCKashDbContext db, IClientAccess access, IClientBiometricsService biometrics, IOfficeScope scope, IFileStorageService files)
     {
+        _files = files;
         _db = db;
         _access = access;
         _biometrics = biometrics;
@@ -91,7 +94,7 @@ public class ClientBiometricsController : ControllerBase
             blocked,
             responses,
             required,
-            !string.IsNullOrWhiteSpace(client.Picture),
+            await _files.ExistsAsync(client.Picture, cancellationToken),
             canUploadPhoto));
     }
 

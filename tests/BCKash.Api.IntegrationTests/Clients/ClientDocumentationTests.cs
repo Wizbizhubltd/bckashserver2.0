@@ -400,6 +400,110 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
         Assert.Contains(audit!, e => e.Action == "Notes: Added (super admin)");
     }
 
+    [Fact]
+    public async Task An_old_approved_client_is_documented_by_their_assigned_staff_until_the_record_is_complete()
+    {
+        var assignedEmail = $"doc-legacy-assigned-{Guid.NewGuid():N}@bckash.test";
+        int clientId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            var officeId = (await TestDataSeeder.SeedOfficeAsync(db)).Id;
+            var formerStaff = await TestDataSeeder.SeedTypedUserAsync(db, $"doc-legacy-former-{Guid.NewGuid():N}@bckash.test", Password, UserTypeSlugs.Marketer, officeId);
+            var assigned = await TestDataSeeder.SeedTypedUserAsync(db, assignedEmail, Password, UserTypeSlugs.Manager, officeId);
+            // Created by someone else under the old system, approved long ago, never documented.
+            var client = new Client
+            {
+                FirstName = "Old",
+                LastName = "Timer",
+                DisplayName = "Old Timer",
+                OfficeId = officeId,
+                Status = ClientStatus.Active,
+                ActivatedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-3)),
+                CreatedById = formerStaff.Id,
+                StaffId = assigned.Id,
+                CreatedAt = DateTime.UtcNow.AddYears(-3),
+            };
+            db.Clients.Add(client);
+            await db.SaveChangesAsync();
+            clientId = client.Id;
+        }
+
+        var staff = await SignInAsync(assignedEmail);
+        var before = await staff.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options);
+        Assert.True(before!.Actions!.CanEditDetails);
+        Assert.False(before.Actions.CanRequestEdit);
+
+        var nin = $"3{Random.Shared.NextInt64(1_000_000_000, 9_999_999_999)}";
+        Assert.Equal(HttpStatusCode.Created, (await UploadAsync(staff, clientId, "nin_slip", null, nin, "nin.pdf", 1024)).StatusCode);
+        foreach (var (kind, name) in new[] { ("guarantors", "Chidi Obi"), ("guarantors", "Bola Ade"), ("references", "Emeka Eze") })
+        {
+            var added = await staff.PostAsJsonAsync($"/api/v1/clients/{clientId}/{kind}",
+                new SaveClientContactRequest(name, "08031234567", null, "12 Marina, Lagos", "Friend", "Trader"));
+            Assert.True(added.IsSuccessStatusCode, $"{kind}: {(int)added.StatusCode} {await added.Content.ReadAsStringAsync()}");
+        }
+
+        // Backfilling doesn't send the client back to pending; once complete, the usual lock is back.
+        var after = await staff.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options);
+        Assert.Equal(ClientStatus.Active, after!.Status);
+        Assert.False(after.Actions!.CanEditDetails);
+        Assert.True(after.Actions.CanRequestEdit);
+        Assert.Equal(HttpStatusCode.Forbidden, (await staff.PostAsJsonAsync($"/api/v1/clients/{clientId}/references",
+            new SaveClientContactRequest("Late Ref", "08031234567", null, "12 Marina, Lagos", "Friend", "Trader"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Documents_whose_file_is_missing_from_storage_are_not_listed()
+    {
+        var (clientId, marketer, _) = await SetUpAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            // A legacy row whose file never made it across.
+            db.Documents.Add(new Document { Type = ReferenceEntityType.Client, RecordId = clientId, Name = "old-scan.jpg", Location = "uploads/legacy/never-migrated.jpg", CreatedAt = DateTime.UtcNow.AddYears(-2) });
+            db.Documents.Add(new Document { Type = ReferenceEntityType.Client, RecordId = clientId, Name = "no-location.jpg", CreatedAt = DateTime.UtcNow.AddYears(-2) });
+            await db.SaveChangesAsync();
+        }
+
+        var nin = $"4{Random.Shared.NextInt64(1_000_000_000, 9_999_999_999)}";
+        Assert.Equal(HttpStatusCode.Created, (await UploadAsync(marketer, clientId, "nin_slip", null, nin, "nin.pdf", 1024)).StatusCode);
+
+        var documents = await marketer.GetFromJsonAsync<List<DocumentResponse>>($"/api/v1/clients/{clientId}/documents", TestJson.Options);
+        var listed = Assert.Single(documents!);
+        Assert.Equal("nin.pdf", listed.Name);
+        Assert.True((await marketer.GetAsync($"/api/v1/clients/{clientId}/documents/{listed.Id}/download")).IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task Photos_whose_file_is_missing_from_storage_count_as_no_photo()
+    {
+        var (clientId, marketer, _) = await SetUpAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BCKashDbContext>();
+            (await db.Clients.FindAsync(clientId))!.Picture = "uploads/legacy/never-migrated-passport.jpg";
+            db.ClientContacts.Add(new ClientContact
+            {
+                ClientId = clientId,
+                Kind = ClientContact.GuarantorKind,
+                FullName = "Old Guarantor",
+                Phone = "08031234567",
+                Address = "12 Marina, Lagos",
+                Relationship = "Friend",
+                Photo = "uploads/legacy/never-migrated-guarantor.jpg",
+                CreatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await marketer.GetFromJsonAsync<ClientResponse>($"/api/v1/clients/{clientId}", TestJson.Options);
+        Assert.False(client!.HasPhoto);
+        var biometrics = await marketer.GetFromJsonAsync<ClientBiometricsResponse>($"/api/v1/clients/{clientId}/biometrics", TestJson.Options);
+        Assert.False(biometrics!.HasPhoto);
+        var guarantor = Assert.Single((await marketer.GetFromJsonAsync<List<ClientContactResponse>>($"/api/v1/clients/{clientId}/guarantors", TestJson.Options))!);
+        Assert.False(guarantor.HasPhoto);
+    }
+
     private async Task<(int ClientId, HttpClient Marketer, HttpClient Controller)> SetUpAsync()
     {
         var marketerEmail = $"doc-marketer-{Guid.NewGuid():N}@bckash.test";
@@ -415,6 +519,10 @@ public class ClientDocumentationTests : IClassFixture<BCKashWebApplicationFactor
             db.Clients.Add(client);
             await db.SaveChangesAsync();
             clientId = client.Id;
+
+            // As the onboarding flow records it — so this is a current client, not a legacy one in its backfill window.
+            db.AuditTrail.Add(new AuditTrailEntry { UserId = marketer.Id, OfficeId = officeId, Module = nameof(Client), Name = "Client onboarding", Action = "Onboarded", EntityId = clientId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
         }
 
         return (clientId, await SignInAsync(marketerEmail), await SignInAsync(controllerEmail));

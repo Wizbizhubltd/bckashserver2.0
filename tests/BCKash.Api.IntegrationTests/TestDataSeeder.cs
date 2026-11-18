@@ -129,6 +129,13 @@ public static class TestDataSeeder
             });
         }
 
+        // Onboarded through the current flow, so once approved it's under the normal lock rather
+        // than the legacy backfill window (see ClientAccess.IsAwaitingBackfillAsync).
+        if (!await db.AuditTrail.AnyAsync(a => a.Module == nameof(Client) && a.Name == "Client onboarding" && a.EntityId == clientId))
+        {
+            db.AuditTrail.Add(new AuditTrailEntry { Module = nameof(Client), Name = "Client onboarding", Action = "Onboarded", EntityId = clientId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        }
+
         await db.SaveChangesAsync();
     }
 

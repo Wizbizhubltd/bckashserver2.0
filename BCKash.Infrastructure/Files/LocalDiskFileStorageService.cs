@@ -56,6 +56,9 @@ public class LocalDiskFileStorageService : IFileStorageService
         return Task.FromResult<StoredFileContent?>(new StoredFileContent(stream, contentType));
     }
 
+    public Task<bool> ExistsAsync(string? location, CancellationToken cancellationToken = default) =>
+        Task.FromResult(!string.IsNullOrWhiteSpace(location) && File.Exists(ResolvePath(location)));
+
     public Task DeleteAsync(string location, CancellationToken cancellationToken = default)
     {
         try

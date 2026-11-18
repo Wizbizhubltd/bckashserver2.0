@@ -4,6 +4,7 @@ using BCKash.Application.Communications;
 using BCKash.Application.Loans;
 using BCKash.Application.Organization;
 using BCKash.Domain.Clients;
+using BCKash.Domain.Identity;
 using BCKash.Domain.Loans;
 using BCKash.Domain.Organization;
 using BCKash.Infrastructure.Data;
@@ -130,7 +131,7 @@ public class SettingsController : ControllerBase
     private static string? Normalize(string key, string? value) =>
         CompanyProfileKeys.All.Contains(key) || OverdueRuleKeys.All.Contains(key) || CurrencyDisplayKeys.All.Contains(key) || key == IOfficeFundService.RequireFundsSettingKey
         || key == LoanFaceMatchRoles.SettingKey || key == ISmsSwitch.SettingKey || ClientSavingsSettingKeys.All.Contains(key) || key == FaceCaptureRules.SettingKey
-        || key == BvnVerificationRules.SettingKey
+        || key == BvnVerificationRules.SettingKey || key == LoginLockoutRules.SettingKey
             ? value?.Trim()
             : value;
 
@@ -140,6 +141,7 @@ public class SettingsController : ControllerBase
         ?? ClientSavingsSettingKeys.Validate(key, value)
         ?? FaceCaptureRules.Validate(key, value)
         ?? BvnVerificationRules.Validate(key, value)
+        ?? LoginLockoutRules.Validate(key, value)
         ?? (key == IOfficeFundService.RequireFundsSettingKey && value?.Trim() is not ("0" or "1") ? "“Loans draw on office funds” must be switched on (1) or off (0)." : null)
         ?? (key == ISmsSwitch.SettingKey && value?.Trim() is not ("0" or "1") ? "“SMS sending” must be switched on (1) or off (0)." : null);
 }

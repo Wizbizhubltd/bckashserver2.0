@@ -102,6 +102,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<StaffAssignmentInterceptor>();
         services.AddScoped<AuditSaveChangesInterceptor>();
 
+        // Caching:QueryCache — the Redis second-level cache over every EF query (see below). On by default.
+        var useQueryCache = configuration.GetValue("Caching:QueryCache", true);
+
         services.AddDbContext<BCKashDbContext>((sp, options) =>
         {
             var connectionString = configuration.GetConnectionString("BCKashDb");
@@ -138,8 +141,11 @@ public static class InfrastructureServiceCollectionExtensions
 
             options.AddInterceptors(
                 sp.GetRequiredService<StaffAssignmentInterceptor>(),
-                sp.GetRequiredService<AuditSaveChangesInterceptor>(),
-                sp.GetRequiredService<SecondLevelCacheInterceptor>());
+                sp.GetRequiredService<AuditSaveChangesInterceptor>());
+            if (useQueryCache)
+            {
+                options.AddInterceptors(sp.GetRequiredService<SecondLevelCacheInterceptor>());
+            }
         });
 
         // Same Testing:UseSqlite flag used for the DB provider and email/SMS fakes below — no
@@ -284,7 +290,8 @@ public static class InfrastructureServiceCollectionExtensions
         {
             services.AddScoped<IEmailSender, SmtpEmailSender>();
             services.AddHttpClient<HttpSmsGatewaySender>();
-            services.AddHttpClient<TermiiOtpSmsSender>();
+            // HttpClient's default timeout is 100s; a stalled SMS call shouldn't hold a delivery worker that long.
+            services.AddHttpClient<TermiiOtpSmsSender>(client => client.Timeout = TimeSpan.FromSeconds(20));
             services.AddScoped<ISmsSender>(sp => new SwitchedSmsSender(
                 sp.GetRequiredService<HttpSmsGatewaySender>(), sp.GetRequiredService<ISmsSwitch>(), sp.GetRequiredService<ILogger<SwitchedSmsSender>>()));
             services.AddScoped<IOtpSmsSender>(sp => new SwitchedOtpSmsSender(

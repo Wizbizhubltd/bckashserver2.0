@@ -18,6 +18,7 @@ public class LoginOtpConfiguration : IEntityTypeConfiguration<LoginOtp>
         builder.Property(o => o.ExpiresAtUtc).HasColumnName("expires_at_utc");
         builder.Property(o => o.ConsumedAtUtc).HasColumnName("consumed_at_utc");
         builder.Property(o => o.CreatedAt).HasColumnName("created_at");
+        builder.Property(o => o.PreviousOtpId).HasColumnName("previous_otp_id");
 
         builder.HasIndex(o => o.UserId).HasDatabaseName("login_otps_user_id_index");
 

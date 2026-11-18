@@ -24,7 +24,8 @@ public record LoginResult(
     AccessToken? AccessToken = null,
     string? RefreshToken = null,
     string? TwoFactorChallengeToken = null,
-    string? OtpChallengeToken = null);
+    string? OtpChallengeToken = null,
+    DateTime? LockedUntilUtc = null);
 
 public enum TwoFactorOutcomeType
 {
@@ -100,7 +101,7 @@ public enum PasswordResetRequestOutcomeType
     TooSoon,
 }
 
-public record PasswordResetRequestResult(PasswordResetRequestOutcomeType Outcome, string? ChallengeToken = null);
+public record PasswordResetRequestResult(PasswordResetRequestOutcomeType Outcome, string? ChallengeToken = null, DateTime? LockedUntilUtc = null);
 
 public enum PasswordResetOutcomeType
 {
